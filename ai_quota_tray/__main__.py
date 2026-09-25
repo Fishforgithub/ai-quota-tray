@@ -9,19 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import traceback
 
-from .model import ERROR, ProviderState, utcnow
-from .providers import ALL
-
-
-def probe_one(name: str, use_token: bool, now) -> ProviderState:
-    """每家獨立失敗：任何例外都收斂成該家的 error 狀態（原則 4）。"""
-    try:
-        return ALL[name].fetch(use_token=use_token, now=now)
-    except Exception as exc:  # noqa: BLE001 — 這裡就是要全收
-        return ProviderState(name, [], None, ERROR, error=f"{type(exc).__name__}: {exc}",
-                             detail={"trace": traceback.format_exc(limit=3).splitlines()[-3:]})
+from .model import utcnow
+from .providers import ALL, fetch_one
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--token 不認得：{', '.join(sorted(unknown))}")
 
     now = utcnow()
-    states = [probe_one(n, n in token_set, now) for n in (args.provider or list(ALL))]
+    states = [fetch_one(n, n in token_set, now) for n in (args.provider or list(ALL))]
     out = {"probed_at": now.isoformat().replace("+00:00", "Z"),
            "providers": [s.to_dict(include_raw=args.raw) for s in states]}
     # Windows 主控台預設 cp950，直接 print 中文可能炸

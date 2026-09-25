@@ -11,10 +11,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from ai_quota_tray.__main__ import probe_one
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE,
                                  label_for_duration, mask_secrets, parse_time, to_float)
-from ai_quota_tray.providers import claude, codex, grok
+from ai_quota_tray.providers import claude, codex, fetch_one, grok
 
 NOW = datetime(2026, 9, 25, 6, 0, tzinfo=timezone.utc)
 EPOCH_NOW = int(NOW.timestamp())
@@ -223,7 +222,7 @@ class GrokTest(unittest.TestCase):
 class ProbeTest(unittest.TestCase):
     def test_one_provider_crash_does_not_break_others(self):
         with mock.patch.object(grok, "fetch", side_effect=KeyError("boom")):
-            state = probe_one("grok", True, NOW)
+            state = fetch_one("grok", True, NOW)
         self.assertEqual(state.status, ERROR)
         self.assertIn("boom", state.error)
 
