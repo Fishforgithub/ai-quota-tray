@@ -17,10 +17,9 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
 
 from . import placement
 from .icon import COLORS, level_for
-from .model import (AUTH_EXPIRED, DISABLED, ERROR, STALE, ProviderState, Window,
+from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, STALE, ProviderState, Window,
                     format_age, format_countdown, utcnow)
 
-DISPLAY_NAME = {"claude": "Claude", "codex": "Codex", "grok": "Grok"}
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI", "grok": "Grok CLI"}
 
 THEMES = {
@@ -52,10 +51,17 @@ def header_note(state: ProviderState, now: datetime) -> tuple[str, bool]:
     """區塊右上角的小字：(文字, 是否警示色)。"""
     if state.detail.get("api_error"):
         return "API 失敗，顯示本機紀錄", True
-    if state.status == STALE:
+    if is_dimmed(state):
         return format_age(state.fetched_at, now), False
     plan = state.detail.get("subscription_tier") or state.detail.get("plan_type")
     return (str(plan) if plan else ""), False
+
+
+def is_dimmed(state: ProviderState | None) -> bool:
+    """資料不是剛抓到的：檔案來源過期，或這次失敗、顯示的是上一次的數字（model.carry_over）。"""
+    if state is None:
+        return False
+    return state.status == STALE or (state.status in (AUTH_EXPIRED, ERROR) and bool(state.windows))
 
 
 def status_message(state: ProviderState) -> str:
@@ -141,7 +147,7 @@ class Card(QWidget):
             if i:
                 grid.setRowMinimumHeight(row, 6)
                 row += 1
-            dim = state is not None and state.status == STALE
+            dim = is_dimmed(state)
             text_c = t["dim"] if dim else t["text"]
             grid.addWidget(label(DISPLAY_NAME.get(name, name), text_c, bold=True), row, 0, 1, 2)
             note_lbl = label("", t["dim"], small=True, align=right)
@@ -189,6 +195,12 @@ class Card(QWidget):
             if products:
                 text = "、".join(f"{p['product']} {int(p['usage_pct'])}%" for p in products)
                 grid.addWidget(label(f"已用佔比：{text}", t["dim"], small=True), row, 0, 1, 4)
+                row += 1
+
+            if state.status in (AUTH_EXPIRED, ERROR):  # 保留了上一次的數字，但要說明為什麼沒更新
+                msg = label(status_message(state), t["warn"], small=True)
+                msg.setWordWrap(True)
+                grid.addWidget(msg, row, 0, 1, 4)
                 row += 1
 
         self._body = body

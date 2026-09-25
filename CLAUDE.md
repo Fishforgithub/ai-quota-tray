@@ -7,14 +7,15 @@ Windows 系統匣常駐工具：顯示 Claude / Codex / Grok 各視窗的剩餘 
 
 ## 0. 目前進度與怎麼跑（2026-09-25）
 
-**P1、P2、P3 完成**，P4 未開始。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
+**P1–P4 全部完成**（個人版）。上線版（MSIX）還沒做，見 §5。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
 
 ```
 python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + Pillow
 .venv\Scripts\python -m ai_quota_tray probe                     # 只用不碰 token 的來源
 .venv\Scripts\python -m ai_quota_tray probe --token codex,grok  # 這幾家改用 token 來源（API 失敗會退回檔案來源）
 .venv\Scripts\python -m ai_quota_tray probe --raw               # 附原始回傳（token/姓名/email/id/UUID 已遮罩）
-.venv\Scripts\python -m ai_quota_tray tray --token codex,grok --debug   # 系統匣常駐（pythonw 可免主控台）
+.venv\Scripts\python -m ai_quota_tray tray --token codex,grok --debug   # 系統匣常駐（pythonw 可免主控台；--log FILE 寫檔）
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\AiQuotaTray\AiQuotaTray.exe（onedir，約 88 MB）
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
 
@@ -27,6 +28,12 @@ python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + 
 - 已驗證（P2）：啟動→三家抓取→圖示登錄、右鍵選單「立即刷新」會重抓、`WM_CLOSE` 正常退出（exit 0、視窗銷毀）。
 - **P3 卡片**：`NIN_POPUPOPEN` 或點一下圖示（`NIN_SELECT`）→ 開；**關閉不靠 `NIN_POPUPCLOSE`**（滑鼠從圖示移到卡片途中就會收到 CLOSE），改成每 150ms 看滑鼠，離開「圖示矩形＋卡片（外擴 6px）」超過 0.4 秒才關。位置：`Shell_NotifyIconGetRect`（實體像素）→ 換算成該螢幕的邏輯像素 → 依圖示落在可用區域哪一側判斷工作列方向（上下左右／inside＝溢位面板或自動隱藏）→ 貼著圖示朝內、夾在可用區域內。取不到圖示位置時用事件的錨點座標。深淺色跟系統（`styleHints().colorScheme()`）。進度條＝剩餘、顏色門檻與圖示共用（`icon.level_for`）；stale 區塊整塊變灰、右上顯示「n 分鐘前」；檔案來源已歸零的視窗倒數顯示「已重置」；右上平常顯示方案（`team`、`GrokPro`）；API 失敗退回本機資料時顯示警示。
 - 已驗證（P3）：實際送 `NIN_POPUPOPEN` → 卡片出現在 `^` 上方、貼齊工作列（截圖看過），滑鼠不在上面 1.4 秒後確認已關閉；也收到過使用者真實 hover 的 `popup_open`/`popup_close`。**多螢幕、工作列在其他邊、非 125% DPI 只有單元測試，沒實機測**。
+- **P4**：
+  - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後全部重抓。
+  - 通知（`alerts.py`）：剩餘 < 10%（＝圖示變紅）時用 `NIF_INFO` 發 toast（`NIIF_RESPECT_QUIET_TIME`），點通知開卡片。**每個視窗每個重置週期只一次**：鍵＝`provider|label|resets_at`，記在 `%LOCALAPPDATA%\ai-quota-tray\state.json`（重開不重複；重置時間過了自動清掉；壞檔直接覆寫）。只看 `ok`/`stale`，失敗後保留的舊數字不發。
+  - 開機啟動（`startup.py`）：右鍵選單「開機時啟動」切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入的是**目前這份的啟動方式**（venv → `pythonw.exe -m ai_quota_tray tray --token …`；打包版 → `AiQuotaTray.exe tray --token …`），不含 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
+  - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（但沒有 `--token`，Grok 會是 `disabled`）。
+  - 已驗證：unittest 45 過；實跑發出 Grok 8% 通知並寫進 state.json；打包版實跑三家抓取＋卡片截圖。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
 - 狀態值比 §2 多一個 `disabled`（來源沒啟用，例如 Grok 沒給 `--token`）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 

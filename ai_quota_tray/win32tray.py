@@ -27,15 +27,18 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(LRESULT, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
 
-WM_NULL, WM_CLOSE, WM_CONTEXTMENU = 0x0000, 0x0010, 0x007B
+WM_NULL, WM_CLOSE, WM_CONTEXTMENU, WM_POWERBROADCAST = 0x0000, 0x0010, 0x007B, 0x0218
+PBT_APMRESUMESUSPEND, PBT_APMRESUMEAUTOMATIC = 0x0007, 0x0012
 WM_APP = 0x8000
 WM_TRAY = WM_APP + 1
 NIN_SELECT, NIN_KEYSELECT = 0x0400, 0x0401
+NIN_BALLOONUSERCLICK = 0x0405
 NIN_POPUPOPEN, NIN_POPUPCLOSE = 0x0406, 0x0407
 NIM_ADD, NIM_MODIFY, NIM_DELETE, NIM_SETVERSION = 0, 1, 2, 4
-NIF_MESSAGE, NIF_ICON, NIF_TIP = 0x01, 0x02, 0x04
+NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 0x01, 0x02, 0x04, 0x10
+NIIF_WARNING, NIIF_RESPECT_QUIET_TIME = 0x02, 0x80
 NOTIFYICON_VERSION_4 = 4
-MF_STRING, MF_GRAYED, MF_SEPARATOR = 0x0000, 0x0001, 0x0800
+MF_STRING, MF_GRAYED, MF_CHECKED, MF_SEPARATOR = 0x0000, 0x0001, 0x0008, 0x0800
 TPM_RIGHTBUTTON, TPM_NONOTIFY, TPM_RETURNCMD = 0x0002, 0x0080, 0x0100
 TPM_BOTTOMALIGN = 0x0020
 SM_CXSMICON = 49
@@ -145,12 +148,13 @@ def hicon_from_png(png: bytes, size: int) -> int:
     return hicon
 
 
-# (id, 文字, 可否點選)；id 為 None 表示分隔線
-MenuItem = tuple[int | None, str, bool]
+# (id, 文字, 可否點選, 是否打勾)；id 為 None 表示分隔線
+MenuItem = tuple[int | None, str, bool, bool]
 
 
 class TrayIcon:
     """on_event(kind, x, y)：kind 是 popup_open / popup_close / context_menu / select，
+    balloon_click（點了通知）、resume（睡眠喚醒），
     以及 quit（有人對隱藏視窗送 WM_CLOSE，例如安裝程式要關掉我們）。
     座標是實體像素（Qt 6 預設 Per-Monitor DPI aware v2）。"""
 
@@ -209,6 +213,16 @@ class TrayIcon:
         if self._added:
             shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self._data(NIF_TIP)))
 
+    def show_balloon(self, title: str, text: str) -> None:
+        """Windows 10/11 會顯示成 toast 通知；勿擾模式（quiet time）時不打擾。"""
+        if not self._added:
+            return
+        nid = self._data(NIF_INFO)
+        nid.szInfoTitle = title[:63]
+        nid.szInfo = text[:255]
+        nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME
+        shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+
     def icon_rect(self) -> tuple[int, int, int, int] | None:
         """圖示在螢幕上的矩形（實體像素）。圖示收在溢位區且溢位區關著時會失敗。"""
         ident = NOTIFYICONIDENTIFIER(cbSize=ctypes.sizeof(NOTIFYICONIDENTIFIER),
@@ -224,11 +238,12 @@ class TrayIcon:
             x, y = cursor_pos()
         menu = user32.CreatePopupMenu()
         try:
-            for item_id, text, enabled in items:
+            for item_id, text, enabled, checked in items:
                 if item_id is None:
                     user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
                 else:
-                    user32.AppendMenuW(menu, MF_STRING | (0 if enabled else MF_GRAYED), item_id, text)
+                    flags = MF_STRING | (0 if enabled else MF_GRAYED) | (MF_CHECKED if checked else 0)
+                    user32.AppendMenuW(menu, flags, item_id, text)
             # 不先 SetForegroundWindow 的話，點選單外面選單不會關（KB135788）
             user32.SetForegroundWindow(self.hwnd)
             cmd = user32.TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON
@@ -260,10 +275,14 @@ class TrayIcon:
                 x, y = _signed_word(wparam), _signed_word(wparam >> 16)
                 kind = {NIN_POPUPOPEN: "popup_open", NIN_POPUPCLOSE: "popup_close",
                         WM_CONTEXTMENU: "context_menu", NIN_SELECT: "select",
-                        NIN_KEYSELECT: "select"}.get(event)
+                        NIN_KEYSELECT: "select", NIN_BALLOONUSERCLICK: "balloon_click"}.get(event)
                 if kind:
                     self._on_event(kind, x, y)
                 return 0
+            if msg == WM_POWERBROADCAST:
+                if wparam in (PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND):
+                    self._on_event("resume", 0, 0)
+                return 1  # TRUE：允許
             if msg == WM_CLOSE:
                 self._on_event("quit", 0, 0)
                 return 0  # 不交給 DefWindowProc：視窗由 close() 統一銷毀

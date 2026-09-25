@@ -19,6 +19,9 @@ AUTH_EXPIRED = "auth_expired"
 ERROR = "error"
 DISABLED = "disabled"
 
+# 顯示名稱（個人版）。上線版要避開商標（CLAUDE.md §5），到時只改這裡
+DISPLAY_NAME = {"claude": "Claude", "codex": "Codex", "grok": "Grok"}
+
 # 檔案來源（statusLine cache、Codex rollout）超過這麼久沒更新就算過期
 FILE_STALE_AFTER = timedelta(minutes=15)
 
@@ -166,6 +169,28 @@ def apply_file_freshness(state: ProviderState, now: datetime) -> ProviderState:
     ):
         state.status = STALE
     return state
+
+
+def carry_over(prev: ProviderState | None, new: ProviderState, now: datetime) -> ProviderState:
+    """這次抓取失敗（auth_expired / error）但上一次有數字 → 保留上一次的視窗。
+
+    狀態維持 new 的（卡片才會提示「請開一下 CLI」），fetched_at 用上一次成功的時間，
+    卡片據此顯示「n 分鐘前」。期間經過重置時間的視窗照檔案來源的規則歸零。
+    """
+    if new.status not in (AUTH_EXPIRED, ERROR) or new.windows or prev is None or not prev.windows:
+        return new
+    windows, rolled = [], list(prev.detail.get("rolled_over", []))
+    for w in prev.windows:
+        w = Window(w.label, w.used_pct, w.resets_at, w.duration_s)
+        if w.resets_at is not None and w.resets_at <= now:
+            w.used_pct, w.resets_at = 0.0, None
+            rolled.append(w.label)
+        windows.append(w)
+    detail = {k: v for k, v in prev.detail.items() if k not in ("api_error", "rolled_over")}
+    if rolled:
+        detail["rolled_over"] = rolled
+    return ProviderState(new.name, windows, prev.fetched_at, new.status, detail,
+                         source=prev.source, error=new.error)
 
 
 # ---------- 顯示格式（CLAUDE.md §4） ----------
