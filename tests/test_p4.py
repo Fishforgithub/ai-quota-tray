@@ -260,6 +260,19 @@ class SettingsDialogTest(unittest.TestCase):
         self.assertIn("違反 Anthropic 使用條款", dlg.help.text())
         self.assertIn("不碰登入憑證", dlg.help.text())
 
+    def test_radios_line_up_in_each_column(self):
+        # 業主截圖：Grok 的本機紀錄被「不支援」擠歪。同一欄的單選鈕中心 x 必須一致
+        from PySide6.QtWidgets import QRadioButton
+        dlg, _ = self.make({"grok"})
+        dlg.show()
+        self.qapp.processEvents()
+        centers = {}
+        for rb in dlg.findChildren(QRadioButton):
+            col = rb.objectName().split("_")[1]
+            centers.setdefault(col, set()).add(rb.mapTo(dlg, rb.rect().center()).x())
+        dlg.hide()
+        self.assertEqual({col: len(xs) for col, xs in centers.items()}, {"local": 1, "api": 1}, centers)
+
     def test_claude_api_needs_confirmation(self):
         from ai_quota_tray.settings import API, LOCAL
         dlg, applied = self.make({"grok"})

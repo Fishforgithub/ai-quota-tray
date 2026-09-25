@@ -76,6 +76,27 @@ def _cell(*widgets: QWidget, align=Qt.AlignCenter) -> QWidget:
     return box
 
 
+def _radio_cell(radio: QRadioButton, note: QLabel | None = None) -> QWidget:
+    """單選鈕永遠在欄位正中間；附註（例如「不支援」）放在右半邊，不影響置中。
+
+    左右兩側各放一個等寬（stretch 相同）的區塊，單選鈕夾在中間。
+    """
+    box = QWidget()
+    lay = QHBoxLayout(box)
+    lay.setContentsMargins(*CELL_MARGINS)
+    lay.setSpacing(0)
+    left, right = QWidget(), QWidget()
+    right_lay = QHBoxLayout(right)
+    right_lay.setContentsMargins(10, 0, 0, 0)
+    right_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    if note is not None:
+        right_lay.addWidget(note)
+    lay.addWidget(left, 1)
+    lay.addWidget(radio, 0, Qt.AlignCenter)
+    lay.addWidget(right, 1)
+    return box
+
+
 def _line() -> QFrame:
     line = QFrame()
     line.setObjectName("line")
@@ -166,15 +187,14 @@ class SettingsDialog(QDialog):
             group.addButton(api, API)
             self.groups[name] = group
 
-            local_cell = [local]
+            note = None
             if not HAS_LOCAL_SOURCE[name]:
                 local.setEnabled(False)
                 note = QLabel("不支援")
                 note.setObjectName("unsupported")
-                local_cell.append(note)
             grid.addWidget(_cell(QLabel(DISPLAY_NAME[name]), align=Qt.AlignLeft), row, 0)
-            grid.addWidget(_cell(*local_cell), row, 1)
-            grid.addWidget(_cell(api), row, 2)
+            grid.addWidget(_radio_cell(local, note), row, 1)
+            grid.addWidget(_radio_cell(api), row, 2)
             row += 1
         return table
 
