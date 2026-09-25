@@ -1,10 +1,4 @@
-"""使用者設定：%LOCALAPPDATA%\\ai-quota-tray\\config.json。
-
-目前只有一項：哪幾家用 API（token 來源），其餘讀本機紀錄。在「設定」視窗切換（settings.py）。
-
-預設：Claude、Codex 讀本機紀錄（不碰 token）；Grok 沒有本機紀錄，只能用 API。
-⚠️ 上線版（CLAUDE.md §5）不能碰 token → 到時 Grok 要整個拿掉或預設關閉。
-"""
+"""Persist enabled services and UI language in the local config file."""
 from __future__ import annotations
 
 import json
@@ -12,15 +6,12 @@ import logging
 import os
 from pathlib import Path
 
+from .i18n import AUTO, LANGUAGES
+
 log = logging.getLogger(__name__)
 
-# 有沒有不碰 token 的本機紀錄可讀。沒有的一律用 API（設定視窗裡「本機紀錄」是停用的）
-HAS_LOCAL_SOURCE = {"claude": True, "codex": True, "grok": False}
-DEFAULT_TOKEN_SOURCES = frozenset({"grok"})
-
-
-def _forced(known: set[str]) -> set[str]:
-    return {name for name in known if not HAS_LOCAL_SOURCE.get(name, True)}
+# 新安裝預設顯示 Claude 與 Codex；各服務的取得方式由 provider 固定。
+DEFAULT_ENABLED = frozenset({"claude", "codex"})
 
 
 def data_dir() -> Path:
@@ -33,33 +24,42 @@ def config_path() -> Path:
     return data_dir() / "config.json"
 
 
-def load_token_sources(known: set[str], path: Path | None = None) -> set[str]:
-    """回傳要用 API 的 provider。沒有設定檔或讀不懂 → 預設值。沒有本機紀錄的一定在裡面。"""
-    path = path or config_path()
-    default = set(DEFAULT_TOKEN_SOURCES & known)
+def _load(path: Path) -> dict | None:
+    """讀不到或讀不懂 → None（呼叫端用預設值）。"""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return default | _forced(known)
+        return None
     except (OSError, ValueError) as exc:
         log.warning("讀不到 %s：%s（改用預設）", path, exc)
-        return default | _forced(known)
-    sources = data.get("token_sources") if isinstance(data, dict) else None
-    if not isinstance(sources, list):
-        return default | _forced(known)
-    return {s for s in sources if s in known} | _forced(known)  # 不認得的名字直接忽略
+        return None
+    return data if isinstance(data, dict) else None
 
 
-def save_token_sources(sources: set[str], path: Path | None = None) -> None:
+def _names(data: dict | None, key: str, known: set[str], default: frozenset) -> set[str]:
+    value = (data or {}).get(key)
+    if not isinstance(value, list):
+        return set(default & known)
+    return {s for s in value if s in known}  # 不認得的名字直接忽略
+
+
+def load_enabled(known: set[str], path: Path | None = None) -> set[str]:
+    """回傳要抓的 provider。舊版設定檔沒有這個欄位 → 預設（只有 Claude、Codex）。"""
+    return _names(_load(path or config_path()), "enabled", known, DEFAULT_ENABLED)
+
+
+def load_language(path: Path | None = None) -> str:
+    value = (_load(path or config_path()) or {}).get("language")
+    return value if value in LANGUAGES else AUTO
+
+
+def save(path: Path | None = None, **fields: set[str] | str) -> None:
+    """更新指定欄位，保留其他欄位；壞檔直接覆寫。例：save(enabled=..., language="en")。"""
     path = path or config_path()
-    data: dict = {}
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            data = loaded  # 保留其他欄位
-    except (OSError, ValueError):
-        pass
-    data["token_sources"] = sorted(sources)
+    data = _load(path) or {}
+    data.pop("token_sources", None)  # Drop obsolete source setting.
+    for key, value in fields.items():
+        data[key] = value if isinstance(value, str) else sorted(value)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

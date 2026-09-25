@@ -1,65 +1,68 @@
 # ai-quota-tray — 專案交接文件
 
-Windows 系統匣常駐工具：顯示 Claude / Codex / Grok 各視窗的剩餘 %、重置倒數。
+Windows 系統匣常駐工具：顯示 Claude / Codex / Antigravity CLI / GitHub Copilot 各視窗的剩餘 %、重置倒數（預設只啟用 Claude、Codex）。
 滑鼠 hover 系統匣圖示 → 彈出自訂卡片（非原生 tooltip）。
 
-> 本文件來自 claude.ai 上的研究與規劃（2026-09-25）。所有端點皆為非公開內部 API，隨時可能改版，實作前請先用 P1 的 probe 驗證實際回傳。
+> 本文件最初來自 2026-09-25 的研究與規劃。現行來源：Claude 本機 statusLine cache、Codex 官方 App Server（失敗退回本機 rollout）、Antigravity 官方 agy CLI、Copilot 官方 SDK。Grok 原本使用未公開端點，現已停用並從介面移除。下文 Grok 與私有端點記錄僅供歷史參考，不代表現行實作。
 
 ## 0. 目前進度與怎麼跑（2026-09-25）
 
-**P1–P4 全部完成**（個人版）。上線版（MSIX）還沒做，見 §5。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
+**P1–P4 全部完成**（個人版），P5 加了 Antigravity／Copilot；Grok 因沒有確認獲授權的自動額度介面而停用。上線版（MSIX）還沒做，見 §5。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
 
 ```
 python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + Pillow
-.venv\Scripts\python -m ai_quota_tray probe                     # 只用不碰 token 的來源
-.venv\Scripts\python -m ai_quota_tray probe --token codex,grok  # 這幾家改用 token 來源（API 失敗會退回檔案來源）
+.venv\Scripts\python -m ai_quota_tray probe                     # 依各 provider 固定來源抓取
 .venv\Scripts\python -m ai_quota_tray probe --raw               # 附原始回傳（token/姓名/email/id/UUID 已遮罩）
 .venv\Scripts\python -m ai_quota_tray tray --debug              # 系統匣常駐（pythonw 可免主控台；--log FILE 寫檔）
-.venv\Scripts\python -m ai_quota_tray tray --token codex,grok   # 同上，並把 token 來源寫進 config.json（之後用右鍵選單改）
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\AiQuotaTray\AiQuotaTray.exe（onedir，約 88 MB）
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
 
-- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`net.py`（urllib GET，401 或非 HTML 的 403 → `AuthExpired`）、`providers/{claude,codex,grok}.py`（各自 `fetch(use_token, now)`；`providers.fetch_one` 把例外收斂成該家 `error`）、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`（卡片定位純計算）、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
+- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`codex_app_server.py`（Codex 官方 stdio 協定，登入由 Codex CLI 管理）、`providers/{claude,codex,antigravity,copilot}.py`、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
+- 更新策略：啟動後只有 Claude 會讀本機快取，之後每 2 分鐘重讀；Codex、Antigravity、Copilot 不在背景定時呼叫服務，僅開啟卡片時按最短間隔（Codex 2 分鐘、其餘 5 分鐘）查詢，或右鍵「立即刷新」強制查詢。每分鐘只在本機檢查雲端快照是否過期。低額度通知因此要等查看或手動刷新後才會收到。
+- Copilot 的 SDK `reset_date` 在此環境回傳過去日期；若無有效的未來日期，有限額度依 GitHub 官方規則推算下一個月 1 日 00:00 UTC 重置，卡片倒數前顯示「約」／`~` 以區分推算值。
 - probe **只用標準函式庫**；`requires-python >= 3.11`。
 - **P2 與 §4 的差異**：系統匣走 **ctypes** 而不是 pywin32（pywin32 沒包 `Shell_NotifyIconGetRect`，VERSION_4 的 union 也難填）。右鍵選單用原生 `TrackPopupMenu`（先 `SetForegroundWindow`，否則點外面不會關）。收回呼訊息的是隱藏的**頂層**視窗、不是 message-only（`TaskbarCreated` 只廣播給頂層視窗，Explorer 重啟會自動重新登錄圖示）。對該視窗送 `WM_CLOSE` ＝ 正常結束（會 `NIM_DELETE`，不留殘影）。單一實例用具名 mutex `Local\AiQuotaTray.SingleInstance`。
 - 工作列圖示：啟動時呼叫 `SetCurrentProcessExplicitAppUserModelID("AiQuotaTray.App")`（`win32tray.set_app_id`），否則 venv 版的視窗會被歸到 `pythonw.exe`、工作列顯示 Python 圖示。
 - 💡 模擬按選單（PostMessage）開出的視窗會被 Windows 擋在後面（前景鎖，工作列按鈕閃爍）；真人點選單才有前景權。測試腳本要截被擋住的視窗用 `PrintWindow(hwnd, dc, PW_RENDERFULLCONTENT)`。
-- 圖示：⚠️ **取代 §4「動態繪製最低剩餘 %」**——業主 2026-09-25 決定**系統匣一律顯示品牌圖示**，不畫數字也不變色；數字只在 hover 卡片，剩餘 < 10% 靠通知。顏色門檻（< 10 紅、< 30 黃、其餘綠，`icon.level_for`）只剩卡片進度條在用。圖示在啟動時設一次，之後抓到資料只更新 tooltip。品牌圖示 `ai_quota_tray/assets/app.png`（512px）／`app.ico`（16–256）是業主設計的（原圖 `D:\FISH\Desktop\ai-quota.png`，裁掉四周光暈：alpha > 128 的方塊外留 3%）；也用在 exe 圖示、通知大圖示（`NIIF_USER | NIIF_LARGE_ICON`）、Qt 對話框。szTip 有填（給螢幕閱讀器），但不設 `NIF_SHOWTIP`，所以不會跳原生 tooltip。
+- 圖示：⚠️ **取代 §4「動態繪製最低剩餘 %」**——業主 2026-09-25 決定**系統匣一律顯示品牌圖示**，不畫數字也不變色；數字只在 hover 卡片，剩餘 < 10% 靠通知。顏色門檻（< 10 紅、< 30 黃、其餘綠，`icon.level_for`）只剩卡片進度條在用。圖示在啟動時設一次，之後抓到資料只更新 tooltip；過期或抓取失敗時 tooltip 不顯示舊百分比。品牌圖示 `ai_quota_tray/assets/app.png`（512px）／`app.ico`（16–256）是業主設計的（原圖 `D:\FISH\Desktop\ai-quota.png`，裁掉四周光暈：alpha > 128 的方塊外留 3%）；也用在 exe 圖示、通知大圖示（`NIIF_USER | NIIF_LARGE_ICON`）、Qt 對話框。szTip 有填（給螢幕閱讀器），但不設 `NIF_SHOWTIP`，所以不會跳原生 tooltip。
 - ⚠️ **Windows 11 預設把新圖示收進溢位區（`^`）**，此時 `Shell_NotifyIconGetRect` 回的是 `^` 箭頭的位置（2026-09-25 實測），卡片就會出現在 `^` 上方。使用者要自己在「設定 → 個人化 → 工作列 → 其他系統匣圖示」打開。
 - ⚠️ DPI：Qt 6 預設 Per-Monitor v2，系統匣回呼座標、`GetRect` 都是實體像素；**外部測試腳本沒設 DPI aware 的話拿到的是虛擬化座標**（125% 時差 1.25 倍）。
 - 已驗證（P2）：啟動→三家抓取→圖示登錄、右鍵選單「立即刷新」會重抓、`WM_CLOSE` 正常退出（exit 0、視窗銷毀）。
 - **P3 卡片**：`NIN_POPUPOPEN` 或點一下圖示（`NIN_SELECT`）→ 開；**關閉不靠 `NIN_POPUPCLOSE`**（滑鼠從圖示移到卡片途中就會收到 CLOSE），改成每 150ms 看滑鼠，離開「圖示矩形＋卡片（外擴 6px）」超過 0.4 秒才關。位置：`Shell_NotifyIconGetRect`（實體像素）→ 換算成該螢幕的邏輯像素 → 依圖示落在可用區域哪一側判斷工作列方向（上下左右／inside＝溢位面板或自動隱藏）→ 貼著圖示朝內、夾在可用區域內。取不到圖示位置時用事件的錨點座標。深淺色跟系統（`styleHints().colorScheme()`）。進度條＝剩餘、顏色門檻與圖示共用（`icon.level_for`）；stale 區塊整塊變灰、右上顯示「n 分鐘前」；檔案來源已歸零的視窗倒數顯示「已重置」；右上平常顯示方案（`team`、`GrokPro`）；API 失敗退回本機資料時顯示警示。
 - 已驗證（P3）：實際送 `NIN_POPUPOPEN` → 卡片出現在 `^` 上方、貼齊工作列（截圖看過），滑鼠不在上面 1.4 秒後確認已關閉；也收到過使用者真實 hover 的 `popup_open`/`popup_close`。**多螢幕、工作列在其他邊、非 125% DPI 只有單元測試，沒實機測**。
 - **P4**：
-  - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後全部重抓。
+  - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後重讀 Claude 本機快取。
   - 通知（`alerts.py`）：剩餘 < 10%（＝卡片進度條變紅）時用 `NIF_INFO` 發 toast（`NIIF_RESPECT_QUIET_TIME`），點通知開卡片。**每個視窗每個重置週期只一次**：鍵＝`provider|label|resets_at`，記在 `%LOCALAPPDATA%\ai-quota-tray\state.json`（重開不重複；重置時間過了自動清掉；壞檔直接覆寫）。只看 `ok`/`stale`，失敗後保留的舊數字不發。
   - 右鍵選單（業主要求保持乾淨）：立即刷新／設定…／開機時啟動／關閉。
-  - 設定視窗（`settings.py`，非模態、只開一個）：**照業主設計稿（`D:\FISH\Desktop\AI_Quota_Tray_簡潔資料來源設定.png`）要極簡**——標題「AI Quota Tray · 資料來源」、一張三欄表（服務｜本機紀錄｜API，每家一列單選）、Grok 本機紀錄停用並標「不支援」（`config.HAS_LOCAL_SOURCE`）、所有說明與風險收進表格下方可展開的「各資料來源的說明與限制」（預設收合）、按鈕只有 取消／儲存。**不要再把說明文字放回表格裡**。深淺色跟系統（`PALETTE`）。預設 `config.DEFAULT_TOKEN_SOURCES`＝只有 Grok 用 API。改選 Claude API 按儲存時跳 ToS 確認（預設「否」，選否會退回本機紀錄並留在視窗）。沒改就不套用；有改只重抓有變的那幾家。存在 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `token_sources`（沒有本機紀錄的 provider 讀取時一律補進去）。命令列 `--token` 只是把值寫進 config（給第一次設定用）。
-  - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入的是**目前這份的啟動方式**（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），**刻意不帶 `--token`**（帶了每次開機都會蓋掉選單的選擇），也不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
-  - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（token 來源照 config.json）。
+  - 設定視窗（`settings.py`，非模態、只開一個）：標題「AI Quota Tray · 服務設定」，只提供服務啟用勾選和語言選擇；資料來源由各 provider 固定決定。來源說明收在可展開區。預設只啟用 Claude、Codex；未啟用的服務不抓取、不顯示、不發通知。底部有自家「萌寵桌面精靈／Taskbar Buddy」中英文廣告橫幅，素材取自官網 repo，僅點擊時開啟 Microsoft Store 商品頁。設定存於 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `enabled`／`language`，舊 `token_sources` 在下次儲存時移除。
+  - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入目前的啟動方式（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
+  - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（啟用服務照 config.json）。
   - 已驗證：unittest 55 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`；`SettingsDialogTest`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；實際從右鍵開設定視窗截圖看過；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
   - 🔴 教訓（2026-09-25）：P4 用「字串替換」插入 `_context_menu` 時比對到**第一個** `def shutdown`（`Poller` 的），方法進了錯的類別 → 右鍵一按 `AttributeError`（被 `_proc` 吞掉只寫 log，畫面上就是「右鍵沒反應」），當時的測試都沒走到選單。改 `app.py` 要用能看到上下文的編輯方式，選單相關改動要跑 `MenuTest`。
-- 狀態值比 §2 多一個 `disabled`（來源沒啟用；probe 沒給 `--token grok` 時會出現，系統匣程式裡 Grok 一律用 API 所以不會）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
+- 狀態值比 §2 多一個 `disabled`（歷史相容狀態）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
+- **P5（2026-09-25）加 Antigravity CLI、GitHub Copilot**，預設不啟用（細節見 §3）。Copilot 透過官方 Python SDK 的 `account.getQuota`，使用 Copilot CLI 登入；Antigravity 執行官方 `agy -p /usage --output-format json`，由 agy 自己處理登入。額度不是固定長度的視窗 → Copilot 用 `make_window(label=...)`；Antigravity 依 agy 的群組顯示。卡片：Copilot unlimited 顯示「無上限：…」；全部沒勾選時顯示「沒有啟用任何服務…」；Antigravity 未登入提示先用 agy 登入。
+- **介面中／英切換（2026-09-25，業主要求）**：`i18n.py` 集中所有畫面文字（`STRINGS = {key: (繁中, English)}`、`tr(key)`）。設定視窗左下角「語言」下拉：跟隨系統／繁體中文／English，存 `config.json` 的 `language`（`auto`／`zh-TW`／`en`，預設 auto：Windows 介面語言是中文 → 繁中，其他 → English）。在下拉切換會**整個設定視窗立刻換語言預覽**（`tr(key, lang)`，不動全域），按儲存才套用到選單、卡片、通知、tooltip；只換語言不重抓。⚠️ **視窗 label 在資料裡一律維持中文**（週／月／進階／補全…），只在顯示時 `i18n.window_label` 翻——通知去重鍵含 label，切語言不能讓同一週期再通知一次。provider 的錯誤細節（`state.error`）是除錯用、不翻。`i18n` 模組預設繁中、只有 `run()` 依設定切換，所以既有測試不受本機語言影響；改英文的測試要 `addCleanup(i18n.set_language, "zh-TW")`。QMessageBox 的是／否按鈕字自己給（打包版刪了 Qt 翻譯檔）。卡片進度條改成 60–110px 可縮（英文 “Completions” 會把第一欄撐寬，原本固定 110 會讓 % 壓到條上）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
-2. 上線版**不能碰 token**（§1 原則 5、§5 政策）：設定視窗的 API 選項要拿掉或整個隱藏；Grok 沒有不碰 token 的來源 → 第一版不支援 Grok（或維持選配＋告知風險，要業主決定）。
+2. 上線版**不能由 tray 直接碰 token**（§1 原則 5、§5 政策）：設定視窗已沒有來源切換，Grok 已停用；Codex 走官方 App Server、Copilot 走官方 SDK、Antigravity 走官方 agy CLI。須驗證 MSIX 套件呼叫外部 CLI 與 SDK runtime 的行為。
 3. 開機啟動改 manifest `windows.startupTask`（HKCU `Run` 在 MSIX 無效），`startup.py` 要分 frozen/MSIX 兩條路。
 4. 驗證 `%LOCALAPPDATA%` 重導後 `config.json`／`state.json` 的實際落點，以及讀 `%USERPROFILE%\.claude`、`.codex` 在套件內是否正常。
-5. 名稱與圖示避開 Claude／Codex／Grok 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名已是 AI Quota Tray。
+5. 名稱與圖示避開 Claude／Codex／Grok／Antigravity／Copilot 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名已是 AI Quota Tray。
 6. 簽章：Store 代簽；sideload 要 Azure Trusted Signing。
 7. 還沒實測、上線前要補：toast 畫面、睡眠喚醒重抓、真正寫入 `Run` 的開機啟動、多螢幕／工作列在其他邊／非 125% DPI 的卡片定位、真人點「設定…」時視窗是否在最前面。
 
-**實測結果（本機帳號，2026-09-25）**
+**歷史實測結果（本機帳號，2026-09-25；已移除的來源僅供格式參考）**
 
 | Provider | 來源 | 實際視窗 |
 |---|---|---|
 | Claude | statusLine cache ✅ | 5h + 週。hook 是 `D:\FISH\tools\claude-monitor\statusline-usage.js`，寫 `{"fetchedAt": ms, "rate_limits": {"five_hour": {"used_percentage", "resets_at": 秒}, "seven_day": …}}`（欄位名是 `used_percentage`，不是 API 的 `utilization`） |
-| Claude | OAuth API | 已實作，**未實際呼叫**（ToS 風險，業主決定要不要跑 `--token claude`） |
-| Codex | rollout ✅ / wham API ✅ | **5h + 週都在**（team 方案）：rollout `rate_limits.primary.window_minutes=300`、`secondary=10080`；API `primary_window.limit_window_seconds=18000`、`secondary_window=604800`，另有 `reset_after_seconds`、`additional_rate_limits`、`rate_limit_reset_credits`。閒置 4 天的 rollout 週 1% vs API 5% |
+| Claude | OAuth API（已移除） | 因條款風險不再實作直接取用。 |
+| Codex | rollout / wham API（wham 已移除） | 當時 team 方案有 5h + 週視窗；閒置 4 天的 rollout 週用量落後線上資料。現行改由官方 App Server 取即時額度。 |
+| Antigravity | agy CLI ✅ | **打通**（2026-09-26）：使用 `agy -p "/usage" --output-format json`（非互動 print 模式預設展開 slash command，不消耗模型 token：`total_tokens: 0`）。回傳 `command.data.groups`，包含 Gemini（Gemini Flash/Pro 共用池）與 Claude/GPT（Claude Opus/Sonnet、GPT-OSS 共用池）兩大每週視窗。完全不需要碰 Windows 認證管理員或打報 403 的 Google Cloud Code PA API。 |
 | Grok | billing API ✅ | **只有週視窗**（GrokPro）。`config` 包一層；`currentPeriod` 有 `type`/`start`/`end`（ISO，`+00:00`），`start→end` 正好 604800 秒；`creditUsagePercent` 與 `productUsage[GrokBuild]` 同為 92%；`onDemandCap`/`prepaidBalance` 都是 `{"val": 0}`；`isUnifiedBillingUser: true`。月額度 `/billing` 回 `monthlyLimit {"val":0}`、`used {"val":75}` → 依規則**無月視窗**（另有 `history[]` 近三個月）。`/user` 有 `subscriptionTier`、`hasGrokCodeAccess`，也有姓名、xUserId 等個資（`--raw` 已遮）。⚠️ `~/.grok/auth.json` token 效期只有 **6 小時**，Grok CLI 沒開就會 `auth_expired` |
 
 ---
@@ -68,9 +71,9 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 1. **視窗不寫死**：三家視窗結構已不同，UI 不得假設「5h + 週」。視窗名稱由實際長度（秒）推導。
 2. **只存 `resets_at`（UTC 絕對時間）**，倒數在本地算。抓取頻率與畫面更新頻率分離。
-3. **Token 只讀不寫**：不自行 refresh。refresh token 多為一次性輪替，自行刷新會讓 CLI 那組失效。過期 → status=`auth_expired`，卡片提示「請開一下 CLI」。
+3. **身分驗證交給官方 CLI**：Codex／Antigravity 不由 tray 讀取憑證；Claude 僅讀本機紀錄。Grok／Copilot 目前仍讀取 CLI 憑證，但不自行 refresh。
 4. **每個 provider 獨立失敗**：格式變了只影響該區塊（顯示「Grok：格式變了」），整支程式不能掛。
-5. **上線版不碰 token**（見 §5），個人版可選配 token 來源並清楚標示風險。
+5. **上線版不碰 token**（見 §5）；Grok／Copilot 的發佈取捨仍待決定。
 
 ## 2. 資料模型
 
@@ -94,22 +97,14 @@ class ProviderState:
 ## 3. Provider 資料來源
 
 ### Claude
-- **首選（不碰 token，上線版唯一來源）**：Claude Code statusLine hook 推出的資料 → 寫本地 cache（沿用舊專案 usage-cache.json 的做法）。缺點：Claude Code 沒在跑時不會更新 → 顯示「最後更新時間」。
-- **個人版選配（有條款風險）**：`GET https://api.anthropic.com/api/oauth/usage`
-  - token：`~/.claude/.credentials.json`（可被 config dir 環境變數覆寫）
-  - headers：`Authorization: Bearer <token>`、`anthropic-beta: oauth-2025-04-20`
-  - 回傳 `five_hour` / `seven_day`，各有 `utilization`（已用 %）、`resets_at`
-  - 輪詢 ≥ 120 秒
-  - ⚠️ Anthropic 2026-02 起明文：Free/Pro/Max 的 OAuth token 用於 Claude Code / claude.ai 以外的任何產品、工具、服務皆違反 Consumer ToS，且曾技術封鎖。
+- **唯一來源（不碰 token）**：Claude Code statusLine hook 寫入的 `~/.claude/usage-cache.json`。Claude Code 沒在跑時資料會過時。舊 OAuth API 取得程式已移除。
 
 ### Codex
-- **首選（不碰 token）**：解析 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 最新檔的最後一筆 `token_count` 事件 → `rate_limits`。用 watchdog 監看。缺點：閒置時資料會過時。
-- **個人版選配**：`GET https://chatgpt.com/backend-api/wham/usage`，token 取自 `~/.codex/auth.json` 的 `tokens.access_token`。
-  - `rate_limit.primary_window` / `secondary_window`，各有 `used_percent`、重置時間、`limit_window_seconds`
-- ⚠️ **Codex 在 2026 年中暫時移除 5h 視窗**，`primary_window` 現在裝的是週視窗（604800 秒），`secondary_window` 可能為 null。**一律依 `limit_window_seconds` 決定 label**，null 視窗直接略過。
-  - 2026-09-25 實測：本帳號（team 方案）**5h 視窗仍在**（見 §0），上面這條可能只適用部分方案或已恢復；程式不假設任何一種。
+- **首選**：啟動官方 `codex app-server`（stdio），完成 `initialize`／`initialized`，呼叫 `account/rateLimits/read`。優先採 `rateLimitsByLimitId.codex`；沒有多額度回傳時採 `rateLimits`。Codex CLI 自行管理登入，tray 不讀 `auth.json`。
+- **回退**：App Server 不可用或沒有 Codex 額度資料時，解析 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 最近一筆 `token_count.rate_limits`。本機資料可能過時，卡片會顯示回退警示。
+- 兩種來源都依實際視窗長度決定 label，略過 null 視窗。舊 `wham/usage` 內部端點已移除。官方協定參考 [Codex App Server](https://learn.chatgpt.com/docs/app-server)。
 
-### Grok（最脆弱）
+### Grok（已停用；以下為歷史研究）
 - 2026-06 起 Grok 改制：不再計訊息數，付費方案共用**每週運算額度池**（Chat/Imagine/Voice/Build/API 共用），**沒有 5h 視窗**。部分方案另有月額度。
 - 舊的 grok.com `/rest/rate-limits`（remainingQueries / windowSizeSeconds，需瀏覽器 cookie、會被 Cloudflare 擋）是改制前模型，**不採用**。
 - **可行做法**（需先用 Grok Build CLI 登入）：
@@ -127,12 +122,25 @@ class ProviderState:
   - 參考實作：PyPI 套件 `quse`（`quse/grok_quota.py`），MIT。
 - xAI 對第三方使用此 token 的條款未查到明確說法 → 上線版建議：選配 + 告知風險，或第一版不支援。
 
+### Google Antigravity CLI（`agy`）
+- 透過 agy CLI 原生非互動指令查詢額度：`agy -p "/usage" --output-format json`（非互動 print 模式會自動展開 slash commands，且 `total_tokens: 0` 不消耗任何模型 token）。
+- 不碰 Windows 認證管理員中的 OAuth Token，完全由 `agy` 處理身分驗證與快取，解決了之前打內部 Cloud Code PA API 回傳 403 Forbidden 的問題。
+- 回傳結構包含 `command.data.groups`：
+  - `Gemini Models`（Gemini Flash/Pro 共用額度池）
+  - `Claude and GPT models`（Claude Opus/Sonnet、GPT-OSS 共用額度池）
+  - 各池 `buckets` 提供 `remaining_fraction`、`reset_time` 與每週視窗週期。
+- Windows 下以 `subprocess.CREATE_NO_WINDOW` 背景執行，不彈出終端機黑視窗。
+
+### GitHub Copilot
+- 透過官方 Python SDK 的 `account.getQuota` 查詢帳號額度；tray 不直接讀取 token，也不呼叫舊 `copilot_internal/user` 端點。請先用 `copilot login` 登入。依 SDK 回傳的 `quota_snapshots` 顯示進階／Chat／補全；unlimited 不畫進度條，零額度項目略過。參考 [GitHub Copilot SDK 用量文件](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/usage-and-billing)。
+
 ### 輪詢頻率
 | Provider | 間隔 |
 |---|---|
 | Claude | 120 s |
-| Codex | 120 s（檔案來源則用 watchdog） |
-| Grok | 300 s |
+| Codex | 120 s（官方 App Server；失敗時讀本機 rollout） |
+| Antigravity | 300 s |
+| Copilot | 300 s |
 
 UI：卡片開著每秒重算倒數；關閉時每 30 秒更新圖示。
 
@@ -154,7 +162,7 @@ UI：卡片開著每秒重算倒數；關閉時每 30 秒更新圖示。
 - `%LOCALAPPDATA%` 寫入會重導到套件目錄；解除安裝會清除。
 - PyInstaller 用 `--onedir`，不要 `--onefile`。
 - 簽章：Store 代簽；sideload 需受信任憑證（Azure Trusted Signing）。
-- **政策**：上線版資料來源必須全部不碰 token；名稱與圖示避開「Claude / Codex / Grok」商標（例如中性名稱 AI Quota Tray）。
+- **政策**：上線版資料來源必須全部不碰 token；名稱與圖示避開「Claude / Codex / Grok / Antigravity / Copilot」商標（例如中性名稱 AI Quota Tray）。
 - 散佈選項：Microsoft Store / 公司內部 App Installer 或 Intune / GitHub 開源（provider 由使用者自行啟用）。尚未決定。
 
 ## 6. 開發階段

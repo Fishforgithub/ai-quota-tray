@@ -1,15 +1,4 @@
-"""命令列入口。
-
-    python -m ai_quota_tray tray                         # 系統匣常駐（需要 PySide6、Pillow）
-    python -m ai_quota_tray tray --token codex,grok      # 同上，並把 token 來源存進設定
-                                                         # （之後改用右鍵選單切換）
-
-probe：抓一次各家額度，輸出標準化 JSON（token 已遮罩）。
-
-    python -m ai_quota_tray probe                        # 只用不碰 token 的來源
-    python -m ai_quota_tray probe --token codex,grok     # 這幾家改用 token 來源
-    python -m ai_quota_tray probe --raw                  # 附上原始回傳（已遮罩）
-"""
+"""Command line entry: ``tray`` runs the tray; ``probe`` prints quota JSON."""
 from __future__ import annotations
 
 import argparse
@@ -30,21 +19,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("probe", help="抓一次各家額度並輸出 JSON")
     p.add_argument("--provider", action="append", choices=list(ALL),
                    help="只測這家（可重複），預設全部")
-    p.add_argument("--token", default="",
-                   help="改用 token 來源的 provider，逗號分隔（例如 codex,grok）。"
-                        "⚠️ claude 的 token 來源有 Consumer ToS 風險")
     p.add_argument("--raw", action="store_true", help="附上原始回傳（已遮罩）")
     t = sub.add_parser("tray", help="系統匣常駐")
-    t.add_argument("--token", default=None,
-                   help="同 probe --token，並存進 config.json；不給就沿用設定（右鍵選單可改）")
     t.add_argument("--debug", action="store_true", help="印出系統匣事件與每次抓取結果")
     t.add_argument("--log", metavar="FILE", help="log 寫到檔案（pythonw／打包版沒有主控台）")
     args = parser.parse_args(argv)
-
-    token_set = {s.strip() for s in (args.token or "").split(",") if s.strip()}
-    unknown = token_set - set(ALL)
-    if unknown:
-        parser.error(f"--token 不認得：{', '.join(sorted(unknown))}")
 
     if args.cmd == "tray":
         if sys.stderr is not None:  # pythonw 底下沒有 stderr
@@ -54,10 +33,10 @@ def main(argv: list[str] | None = None) -> int:
                             **({"filename": args.log, "encoding": "utf-8"} if args.log else {}))
         logging.getLogger("PIL").setLevel(logging.INFO)  # --debug 時 Pillow 會逐塊印 PNG 解碼
         from .app import run  # 延後 import：probe 不需要裝 PySide6
-        return run(token_set if args.token is not None else None)
+        return run()
 
     now = utcnow()
-    states = [fetch_one(n, n in token_set, now) for n in (args.provider or list(ALL))]
+    states = [fetch_one(n, False, now) for n in (args.provider or list(ALL))]
     out = {"probed_at": now.isoformat().replace("+00:00", "Z"),
            "providers": [s.to_dict(include_raw=args.raw) for s in states]}
     # Windows 主控台預設 cp950，直接 print 中文可能炸

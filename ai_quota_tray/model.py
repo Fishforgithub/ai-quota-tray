@@ -11,8 +11,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from .i18n import tr
+
 # 狀態值。CLAUDE.md §2 列的是 ok / stale / auth_expired / error；
-# disabled = 使用者沒啟用這個來源（例如 Grok 只有 token 來源而沒開）。
+# disabled = 使用者未啟用這個來源。
 OK = "ok"
 STALE = "stale"
 AUTH_EXPIRED = "auth_expired"
@@ -20,7 +22,8 @@ ERROR = "error"
 DISABLED = "disabled"
 
 # 顯示名稱（個人版）。上線版要避開商標（CLAUDE.md §5），到時只改這裡
-DISPLAY_NAME = {"claude": "Claude", "codex": "Codex", "grok": "Grok"}
+DISPLAY_NAME = {"claude": "Claude", "codex": "Codex",
+                "antigravity": "Antigravity", "copilot": "Copilot"}
 
 # 檔案來源（statusLine cache、Codex rollout）超過這麼久沒更新就算過期
 FILE_STALE_AFTER = timedelta(minutes=15)
@@ -50,7 +53,7 @@ class ProviderState:
     fetched_at: datetime | None  # 資料本身的時間（檔案來源 = 寫入時間，不是讀取時間）
     status: str
     detail: dict = field(default_factory=dict)
-    source: str | None = None  # 例如 statusline-cache / rollout / wham-api
+    source: str | None = None  # 例如 statusline-cache / codex-app-server / rollout
     error: str | None = None
     raw: Any = None  # 只給 probe --raw 用，輸出前一律經過 mask_secrets
 
@@ -111,7 +114,7 @@ def parse_time(value: Any) -> datetime | None:
         return None
     if re.fullmatch(r"\d+(\.\d+)?", text):
         return parse_time(float(text))
-    # Grok 的 expires_at 帶 9 位小數（奈秒），舊版 fromisoformat 只吃到 6 位
+    # 某些 ISO 時間帶 9 位小數（奈秒），舊版 fromisoformat 只吃到 6 位
     text = re.sub(r"(\.\d{6})\d+", r"\1", text.replace("Z", "+00:00"))
     try:
         dt = datetime.fromisoformat(text)
@@ -208,15 +211,15 @@ def format_countdown(target: datetime | None, now: datetime) -> str:
 
 def format_age(fetched_at: datetime | None, now: datetime) -> str:
     if fetched_at is None:
-        return "時間不明"
+        return tr("age.unknown")
     s = max(0, int((now - fetched_at).total_seconds()))
     if s < 60:
-        return "剛剛"
+        return tr("age.now")
     if s < 3600:
-        return f"{s // 60} 分鐘前"
+        return tr("age.minutes", n=s // 60)
     if s < _DAY:
-        return f"{s // 3600} 小時前"
-    return f"{s // _DAY} 天前"
+        return tr("age.hours", n=s // 3600)
+    return tr("age.days", n=s // _DAY)
 
 
 # ---------- 數值 ----------
@@ -248,8 +251,8 @@ def jwt_exp(token: str) -> datetime | None:
 
 # ---------- 遮罩 ----------
 
-# 各種識別資訊：token、email、姓名、任何 *_id / *Id（Grok 的 user 物件就有 xUserId、
-# profileImageAssetId 這種）。寧可多遮，probe 輸出是要能貼給別人看的。
+# 各種識別資訊：token、email、姓名、任何 *_id / *Id。寧可多遮，
+# probe 輸出是要能貼給別人看的。
 _SECRET_KEY = re.compile(
     r"token|key|secret|password|cookie|authorization|session|email|asset"
     r"|[Nn]ame$|(_id|Id|ID)$",

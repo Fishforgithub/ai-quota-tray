@@ -1,6 +1,7 @@
 """Codex。
 
-首選來源：~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl 最後一筆 token_count 事件的 rate_limits。
+首選來源：官方 Codex App Server 的 account/rateLimits/read。
+失敗時讀取 ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl 的 rate_limits。
 實測格式（2026-09-21，team 方案）：
     {"timestamp": "...Z", "type": "event_msg", "payload": {"type": "token_count", "rate_limits": {
         "primary":   {"used_percent": 10.0, "window_minutes": 300,   "resets_at": <s>},
@@ -8,7 +9,6 @@
         "plan_type": "team", ...}}}
 舊版 CLI 用 resets_in_seconds（相對於事件時間），一併支援。
 
-選配：GET https://chatgpt.com/backend-api/wham/usage（token 取自 ~/.codex/auth.json）。
 不論哪個來源，label 一律由視窗長度決定，null 視窗略過（Codex 曾拿掉 5h 視窗）。
 """
 from __future__ import annotations
@@ -18,12 +18,11 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .. import net
-from ..model import (AUTH_EXPIRED, ERROR, OK, AuthExpired, ProviderState, Window,
-                     apply_file_freshness, jwt_exp, make_window, parse_time, to_float, utcnow)
+from ..codex_app_server import AppServerError, client
+from ..model import (ERROR, OK, ProviderState, Window, apply_file_freshness,
+                     make_window, parse_time, to_float, utcnow)
 
 NAME = "codex"
-USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 SCAN_DAY_DIRS = 14  # 長時間的 session 會繼續寫在開始那天的目錄，所以往回多看幾天
 SCAN_FILES = 20
 
@@ -88,52 +87,47 @@ def fetch_rollout(now: datetime) -> ProviderState:
     raise FileNotFoundError(f"{sessions} 最近 {SCAN_DAY_DIRS} 天內找不到含 rate_limits 的 token_count 事件")
 
 
-# ---------- API 來源 ----------
+# ---------- 官方 App Server 來源 ----------
 
-def _api_window(w: dict, now: datetime) -> Window:
-    duration = to_float(w.get("limit_window_seconds"))
-    resets_at = w.get("reset_at")
-    if resets_at is None and w.get("reset_after_seconds") is not None:
-        resets_at = now + timedelta(seconds=to_float(w["reset_after_seconds"]) or 0)
-    return make_window(w.get("used_percent"), resets_at, int(duration) if duration else None)
+def _server_window(w: dict) -> Window:
+    minutes = to_float(w.get("windowDurationMins"))
+    duration = int(minutes * 60) if minutes else None
+    return make_window(w.get("usedPercent"), w.get("resetsAt"), duration)
 
 
-def parse_api(data: dict, now: datetime) -> ProviderState:
-    rate_limit = data.get("rate_limit") or {}
-    windows = [_api_window(rate_limit[k], now)
-               for k in ("primary_window", "secondary_window") if isinstance(rate_limit.get(k), dict)]
-    detail = {k: data.get(k) for k in ("plan_type", "credits") if data.get(k) is not None}
-    if rate_limit.get("limit_reached"):
-        detail["limit_reached"] = True
-    return ProviderState(NAME, windows, now, OK, detail, source="wham-api", raw=data)
+def parse_app_server(data: dict, now: datetime) -> ProviderState:
+    by_id = data.get("rateLimitsByLimitId")
+    if isinstance(by_id, dict) and by_id:
+        limits = by_id.get("codex")
+    else:
+        limits = data.get("rateLimits")
+        if isinstance(limits, dict) and limits.get("limitId") not in (None, "codex"):
+            limits = None
+    if not isinstance(limits, dict):
+        raise ValueError("Codex App Server 沒有 Codex 額度資料")
+    windows = [_server_window(limits[k]) for k in ("primary", "secondary")
+               if isinstance(limits.get(k), dict)]
+    if not windows:
+        raise ValueError("Codex App Server 沒有額度視窗")
+    detail = {k: limits[k] for k in ("planType", "credits", "rateLimitReachedType")
+              if limits.get(k) is not None}
+    if "planType" in detail:
+        detail["plan_type"] = detail.pop("planType")
+    return ProviderState(NAME, windows, now, OK, detail, source="codex-app-server", raw=limits)
 
 
-def fetch_api(now: datetime) -> ProviderState:
-    auth = json.loads((codex_home() / "auth.json").read_text(encoding="utf-8"))
-    tokens = auth.get("tokens") or {}
-    token = tokens.get("access_token")
-    if not token:
-        raise AuthExpired("auth.json 沒有 access_token（是不是用 API key 登入？）")
-    exp = jwt_exp(token)
-    if exp and exp <= now:
-        raise AuthExpired("token 已過期，請開一下 Codex CLI")
-    headers = {"Authorization": f"Bearer {token}"}
-    if tokens.get("account_id"):
-        headers["ChatGPT-Account-Id"] = tokens["account_id"]
-    return parse_api(net.get_json(USAGE_URL, headers), now)
+def fetch_app_server(now: datetime) -> ProviderState:
+    return parse_app_server(client.rate_limits(), now)
 
 
 def fetch(use_token: bool = False, now: datetime | None = None) -> ProviderState:
     now = now or utcnow()
-    if not use_token:
-        return fetch_rollout(now)
     try:
-        return fetch_api(now)
-    except (AuthExpired, net.HttpError) as exc:
+        return fetch_app_server(now)
+    except (AppServerError, OSError, ValueError) as exc:
         try:
             state = fetch_rollout(now)
         except (OSError, ValueError):
-            status = AUTH_EXPIRED if isinstance(exc, AuthExpired) else ERROR
-            return ProviderState(NAME, [], None, status, source="wham-api", error=str(exc))
+            return ProviderState(NAME, [], None, ERROR, source="codex-app-server", error=str(exc))
         state.detail["api_error"] = str(exc)
         return state

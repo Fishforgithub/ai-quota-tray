@@ -40,9 +40,9 @@ class BrandTest(unittest.TestCase):
 
 class TooltipTest(unittest.TestCase):
     def test_tooltip_fits_szTip(self):
-        text = icon.tooltip([state("claude", 10, 7), state("grok", status=AUTH_EXPIRED)])
+        text = icon.tooltip([state("claude", 10, 7), state("codex", status=AUTH_EXPIRED)])
         self.assertIn("claude 5h 90% 週 93%", text)
-        self.assertIn("grok auth_expired", text)
+        self.assertIn("codex auth_expired", text)
         self.assertLessEqual(len(text), 127)
 
 

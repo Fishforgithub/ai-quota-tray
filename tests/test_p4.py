@@ -1,4 +1,5 @@
 """P4：失敗時保留舊數字、低額度通知、開機啟動。"""
+import json
 import os
 import sys
 import tempfile
@@ -19,16 +20,16 @@ NOW = datetime(2026, 9, 25, 6, 0, tzinfo=timezone.utc)
 WEEK_END = NOW + timedelta(days=1, hours=9)
 
 
-def grok(used=92, status=OK, resets=WEEK_END, fetched=NOW):
+def codex(used=92, status=OK, resets=WEEK_END, fetched=NOW):
     wins = [make_window(used, resets, 604800)] if used is not None else []
-    return ProviderState("grok", wins, fetched, status, {"subscription_tier": "GrokPro"},
-                         source="billing-api")
+    return ProviderState("codex", wins, fetched, status, {"plan_type": "Plus"},
+                         source="codex-app-server")
 
 
 class CarryOverTest(unittest.TestCase):
     def test_failure_keeps_previous_numbers_with_new_status(self):
-        prev = grok(fetched=NOW - timedelta(minutes=5))
-        new = ProviderState("grok", [], None, AUTH_EXPIRED, error="token 已過期")
+        prev = codex(fetched=NOW - timedelta(minutes=5))
+        new = ProviderState("codex", [], None, AUTH_EXPIRED, error="token 已過期")
         out = carry_over(prev, new, NOW)
         self.assertEqual(out.status, AUTH_EXPIRED)
         self.assertEqual(out.windows[0].used_pct, 92.0)
@@ -37,52 +38,52 @@ class CarryOverTest(unittest.TestCase):
         self.assertIsNot(out.windows[0], prev.windows[0])  # 不改到上一份
 
     def test_reset_passed_while_failing_rolls_over(self):
-        prev = grok(resets=NOW - timedelta(minutes=1))
-        out = carry_over(prev, ProviderState("grok", [], None, ERROR), NOW)
+        prev = codex(resets=NOW - timedelta(minutes=1))
+        out = carry_over(prev, ProviderState("codex", [], None, ERROR), NOW)
         self.assertEqual(out.windows[0].used_pct, 0.0)
         self.assertEqual(out.detail["rolled_over"], ["週"])
 
     def test_no_carry_when_success_disabled_or_no_previous(self):
-        fresh = grok(50)
-        self.assertIs(carry_over(grok(), fresh, NOW), fresh)
-        disabled = ProviderState("grok", [], None, DISABLED)
-        self.assertIs(carry_over(grok(), disabled, NOW), disabled)
-        err = ProviderState("grok", [], None, ERROR)
+        fresh = codex(50)
+        self.assertIs(carry_over(codex(), fresh, NOW), fresh)
+        disabled = ProviderState("codex", [], None, DISABLED)
+        self.assertIs(carry_over(codex(), disabled, NOW), disabled)
+        err = ProviderState("codex", [], None, ERROR)
         self.assertIs(carry_over(None, err, NOW), err)
 
     def test_card_dims_carried_state_and_shows_age(self):
-        out = carry_over(grok(fetched=NOW - timedelta(minutes=7)),
-                         ProviderState("grok", [], None, AUTH_EXPIRED), NOW)
+        out = carry_over(codex(fetched=NOW - timedelta(minutes=7)),
+                         ProviderState("codex", [], None, AUTH_EXPIRED), NOW)
         self.assertTrue(is_dimmed(out))
         self.assertEqual(header_note(out, NOW), ("7 分鐘前", False))
-        self.assertFalse(is_dimmed(ProviderState("grok", [], None, AUTH_EXPIRED)))
+        self.assertFalse(is_dimmed(ProviderState("codex", [], None, AUTH_EXPIRED)))
 
 
 class AlertTest(unittest.TestCase):
     def test_due_only_below_threshold_and_real_numbers(self):
-        states = [grok(92), grok(89, status=STALE),
+        states = [codex(92), codex(89, status=STALE),
                   ProviderState("claude", [make_window(95, WEEK_END, 18000)], NOW, AUTH_EXPIRED)]
         due = alerts.due_alerts(states, set(), NOW)
         self.assertEqual(len(due), 1)  # 剩 11% 不算；auth_expired 的舊數字不算
         key, title, body = due[0]
-        self.assertEqual(title, "Grok 週額度剩 8%")
+        self.assertEqual(title, "Codex 週額度剩 8%")
         self.assertIn("1d09h 後重置", body)
 
     def test_once_per_reset_cycle_and_survives_restart(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
             store = alerts.AlertStore(path)
-            self.assertEqual(len(store.take_due([grok()], NOW)), 1)
-            self.assertEqual(store.take_due([grok(95)], NOW), [])  # 同一週期再降也不再跳
-            self.assertEqual(alerts.AlertStore(path).take_due([grok()], NOW), [])  # 重開程式
-            next_cycle = grok(resets=WEEK_END + timedelta(days=7))
+            self.assertEqual(len(store.take_due([codex()], NOW)), 1)
+            self.assertEqual(store.take_due([codex(95)], NOW), [])  # 同一週期再降也不再跳
+            self.assertEqual(alerts.AlertStore(path).take_due([codex()], NOW), [])  # 重開程式
+            next_cycle = codex(resets=WEEK_END + timedelta(days=7))
             later = WEEK_END + timedelta(hours=1)
             self.assertEqual(len(alerts.AlertStore(path).take_due([next_cycle], later)), 1)
 
     def test_prune_drops_passed_resets(self):
-        old = alerts.alert_key("grok", "週", NOW - timedelta(seconds=1))
-        live = alerts.alert_key("grok", "週", NOW + timedelta(days=1))
-        unknown = alerts.alert_key("grok", "週", None)
+        old = alerts.alert_key("codex", "週", NOW - timedelta(seconds=1))
+        live = alerts.alert_key("codex", "週", NOW + timedelta(days=1))
+        unknown = alerts.alert_key("codex", "週", None)
         self.assertEqual(alerts.prune({old, live, unknown}, NOW), {live, unknown})
 
     def test_corrupt_state_file_is_ignored(self):
@@ -91,15 +92,15 @@ class AlertTest(unittest.TestCase):
             path.write_text("{not json", encoding="utf-8")
             store = alerts.AlertStore(path)
             self.assertEqual(store.notified, set())
-            store.take_due([grok()], NOW)  # 壞檔要被覆寫，否則下次啟動會重複通知
-            self.assertEqual(alerts.AlertStore(path).take_due([grok()], NOW), [])
+            store.take_due([codex()], NOW)  # 壞檔要被覆寫，否則下次啟動會重複通知
+            self.assertEqual(alerts.AlertStore(path).take_due([codex()], NOW), [])
 
 
 class StartupTest(unittest.TestCase):
     TEST_KEY = r"Software\AiQuotaTray-unittest"  # 不碰真正的 Run 機碼
 
     def test_command_uses_pythonw_without_tokens(self):
-        # token 來源在 config.json；帶 --token 會在每次開機蓋掉選單的選擇
+        # 開機時使用目前版本的 tray 指令。
         cmd = startup.command_line()
         self.assertIn("pythonw.exe", cmd)
         self.assertTrue(cmd.endswith("-m ai_quota_tray tray"))
@@ -124,22 +125,29 @@ class StartupTest(unittest.TestCase):
 
 
 class ConfigTest(unittest.TestCase):
-    def test_roundtrip_ignores_unknown_and_keeps_other_fields(self):
+    KNOWN = {"claude", "codex", "antigravity", "copilot"}
+    def test_legacy_source_setting_is_removed_on_save(self):
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "sub" / "config.json"
-            known = {"claude", "codex", "grok"}
-            self.assertEqual(config.load_token_sources(known, path), {"grok"})  # 沒檔案＝預設
-            path.parent.mkdir()
-            path.write_text('{"other": 1, "token_sources": ["codex", "bogus"]}', encoding="utf-8")
-            # grok 沒有本機紀錄，就算設定檔沒寫也一定用 API
-            self.assertEqual(config.load_token_sources(known, path), {"codex", "grok"})
-            config.save_token_sources({"claude", "grok"}, path)
-            self.assertEqual(config.load_token_sources(known, path), {"claude", "grok"})
-            self.assertIn('"other": 1', path.read_text(encoding="utf-8"))
-            path.write_text("{broken", encoding="utf-8")
-            self.assertEqual(config.load_token_sources(known, path), {"grok"})
-            config.save_token_sources({"codex", "grok"}, path)  # 壞檔直接覆寫
-            self.assertEqual(config.load_token_sources(known, path), {"codex", "grok"})
+            path = Path(tmp) / "config.json"
+            path.write_text('{"other": 1, "token_sources": ["claude", "codex"]}', encoding="utf-8")
+            config.save(path, enabled={"claude"})
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data, {"other": 1, "enabled": ["claude"]})
+
+    def test_enabled_defaults_to_claude_and_codex_only(self):
+        # 業主 2026-09-25：預設只勾 Claude、Codex，其他家要自己到設定勾選
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            self.assertEqual(config.load_enabled(self.KNOWN, path), {"claude", "codex"})
+            path.write_text('{"token_sources": ["grok"]}', encoding="utf-8")  # 舊版設定檔
+            self.assertEqual(config.load_enabled(self.KNOWN, path), {"claude", "codex"})
+            path.write_text('{"enabled": ["grok", "claude"]}', encoding="utf-8")
+            self.assertEqual(config.load_enabled(self.KNOWN, path), {"claude"})
+            config.save(path, enabled={"copilot", "bogus"})
+            self.assertEqual(config.load_enabled(self.KNOWN, path), {"copilot"})
+            self.assertNotIn("token_sources", json.loads(path.read_text(encoding="utf-8")))
+            config.save(path, enabled=set())  # 全部取消勾選也要記得，不能變回預設
+            self.assertEqual(config.load_enabled(self.KNOWN, path), set())
 
 
 class MenuTest(unittest.TestCase):
@@ -171,8 +179,25 @@ class MenuTest(unittest.TestCase):
             self.addCleanup(p.stop)
         self.addCleanup(self.tmp.cleanup)
         self.cfg = cfg
-        self.tray_app = app.TrayApp({"grok"})
+        self.tray_app = app.TrayApp({"claude", "codex"})
         self.addCleanup(self.tray_app.shutdown)
+
+    def test_remote_services_fetch_only_when_viewed_and_throttled(self):
+        refresh = self.app_mod.Poller.refresh
+        self.assertEqual([call.args[0] for call in refresh.call_args_list], ["claude"])
+        refresh.reset_mock()
+        with mock.patch.object(self.app_mod.time, "monotonic", side_effect=[1000, 1001, 1121]):
+            self.tray_app._refresh_on_view()
+            self.tray_app._refresh_on_view()
+            self.tray_app._refresh_on_view()
+        self.assertEqual([call.args[0] for call in refresh.call_args_list], ["codex", "codex"])
+
+    def test_old_remote_numbers_are_marked_stale(self):
+        old = self.app_mod.utcnow() - timedelta(seconds=121)
+        self.tray_app._on_fetched(ProviderState("codex", [make_window(50, WEEK_END, 604800)], old, OK))
+        self.tray_app._mark_remote_stale()
+        self.assertEqual(self.tray_app.states["codex"].status, "stale")
+        self.assertIn("codex stale", self.tray_app.tray.set_tooltip.call_args.args[0])
 
     def labels(self):
         return [(text, checked) for mid, text, _, checked in self.tray_app.menu_items() if mid]
@@ -187,21 +212,39 @@ class MenuTest(unittest.TestCase):
         self.app_mod.Poller.refresh.reset_mock()
         self.tray_app._on_tray_event("context_menu", 10, 20)
         tray.show_menu.assert_called_once()
-        self.assertEqual(self.app_mod.Poller.refresh.call_count, 3)
+        self.assertEqual(self.app_mod.Poller.refresh.call_count, 2)
 
     def test_settings_opens_once_and_applies(self):
         self.tray_app.handle_menu(self.app_mod.MENU_SETTINGS)
         dlg = self.tray_app._settings
         self.assertTrue(dlg.isVisible())
         self.tray_app.handle_menu(self.app_mod.MENU_SETTINGS)
-        self.assertIs(self.tray_app._settings, dlg)  # 不會開第二個
+        self.assertIs(self.tray_app._settings, dlg)
         self.app_mod.Poller.refresh.reset_mock()
-        dlg.groups["codex"].button(1).setChecked(True)  # Codex → API
+        dlg.checks["copilot"].setChecked(True)
         dlg.accept()
         self.assertFalse(dlg.isVisible())
-        self.assertEqual(self.tray_app.token_set, {"codex", "grok"})
-        self.assertEqual(config.load_token_sources({"codex", "grok", "claude"}, self.cfg), {"codex", "grok"})
-        self.app_mod.Poller.refresh.assert_called_once_with("codex")  # 只重抓有變的那家
+        self.assertEqual(config.load_enabled(set(self.app_mod.ALL), self.cfg),
+                         {"claude", "codex", "copilot"})
+        self.app_mod.Poller.refresh.assert_not_called()
+
+    def test_enable_and_disable_from_settings(self):
+        self.tray_app._on_fetched(ProviderState("codex", [make_window(50, WEEK_END, 604800)], NOW, OK))
+        self.tray_app.handle_menu(self.app_mod.MENU_SETTINGS)
+        dlg = self.tray_app._settings
+        self.app_mod.Poller.refresh.reset_mock()
+        dlg.checks["codex"].setChecked(False)
+        dlg.checks["copilot"].setChecked(True)
+        dlg.accept()
+        self.assertEqual(self.tray_app.enabled, {"claude", "copilot"})
+        self.assertEqual(config.load_enabled(set(self.app_mod.ALL), self.cfg), {"claude", "copilot"})
+        self.app_mod.Poller.refresh.assert_not_called()  # 遠端服務等查看卡片才查
+        names = [n for n, _ in self.tray_app._card_states()]
+        self.assertEqual(names, ["claude", "copilot"])  # 取消勾選的不上卡片
+        self.assertNotIn("codex", self.tray_app.states)
+        # 取消勾選前已送出的抓取晚到，也不能讓它回到卡片上
+        self.tray_app._on_fetched(ProviderState("codex", [make_window(50, WEEK_END, 604800)], NOW, OK))
+        self.assertNotIn("codex", self.tray_app.states)
 
     def test_startup_and_quit(self):
         self.tray_app.handle_menu(self.app_mod.MENU_STARTUP)
@@ -216,9 +259,35 @@ class MenuTest(unittest.TestCase):
         tray = self.tray_app.tray
         self.assertEqual(tray.set_icon.call_args_list[0].args[0], icon.brand_png(16))
         tray.set_icon.reset_mock()
-        self.tray_app._on_fetched(ProviderState("grok", [make_window(92, WEEK_END, 604800)], NOW, OK))
+        self.tray_app._on_fetched(ProviderState("codex", [make_window(92, WEEK_END, 604800)], NOW, OK))
         tray.set_icon.assert_not_called()
-        self.assertIn("grok 週 8%", tray.set_tooltip.call_args.args[0])
+        self.assertIn("codex 週 8%", tray.set_tooltip.call_args.args[0])
+
+
+class PollerTest(unittest.TestCase):
+    def test_fixed_provider_sources(self):
+        from ai_quota_tray.app import Poller
+        names = {"claude", "codex", "antigravity", "copilot"}
+        poller = Poller(names)
+        self.addCleanup(poller.shutdown)
+        with mock.patch.object(poller, "_pool") as pool:
+            for name in names:
+                poller.refresh(name)
+            routing = {call.args[1]: call.args[2] for call in pool.submit.call_args_list}
+        self.assertEqual(routing, {"claude": False, "codex": False,
+                                   "antigravity": False, "copilot": False})
+
+    def test_skips_disabled_and_inflight(self):
+        from ai_quota_tray.app import Poller
+        poller = Poller({"claude", "grok"})
+        self.addCleanup(poller.shutdown)
+        self.assertEqual(poller.enabled, {"claude"})
+        with mock.patch.object(poller, "_pool") as pool:
+            poller.refresh("grok")  # 已移除的服務一律不抓
+            pool.submit.assert_not_called()
+            poller.refresh("claude")
+            poller.refresh("claude")  # 還在抓
+            self.assertEqual(pool.submit.call_count, 1)
 
 
 class SettingsDialogTest(unittest.TestCase):
@@ -227,74 +296,38 @@ class SettingsDialogTest(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
         cls.qapp = QApplication.instance() or QApplication([])
 
-    def make(self, sources):
+    def make(self, enabled=None, language="zh-TW"):
         from ai_quota_tray.settings import SettingsDialog
         applied = []
-        dlg = SettingsDialog(sources, applied.append)
+        enabled = {"claude", "codex"} if enabled is None else enabled
+        dlg = SettingsDialog(enabled, language, lambda *args: applied.append(args))
         self.addCleanup(dlg.deleteLater)
         return dlg, applied
 
-    def test_reflects_current_and_grok_local_is_disabled(self):
-        from ai_quota_tray.settings import API, LOCAL
-        dlg, _ = self.make({"grok"})
-        self.assertEqual(dlg.groups["claude"].checkedId(), LOCAL)
-        self.assertEqual(dlg.groups["codex"].checkedId(), LOCAL)
-        self.assertEqual(dlg.groups["grok"].checkedId(), API)
-        self.assertFalse(dlg.groups["grok"].button(LOCAL).isEnabled())
-
-    def test_minimal_layout_with_collapsed_help(self):
-        # 業主設計稿：表格只放勾選，說明收進「各資料來源的說明與限制」且預設收合
-        from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QLabel, QPushButton
-        dlg, _ = self.make({"grok"})
-        self.assertEqual(dlg.windowTitle(), "AI Quota Tray · 資料來源")
-        self.assertFalse(dlg.windowIcon().isNull())  # 工作列要用產品圖示
-        texts = [lbl.text() for lbl in dlg.findChildren(QLabel)]
-        for t in ("服務", "本機紀錄", "API", "Claude", "Codex", "Grok", "不支援"):
-            self.assertIn(t, texts)
-        self.assertEqual(sorted(b.text() for b in dlg.findChildren(QPushButton)), ["儲存", "取消"])
-        self.assertFalse(dlg.help.isVisibleTo(dlg))
-        dlg.help_toggle.click()
-        self.assertTrue(dlg.help.isVisibleTo(dlg))
-        self.assertEqual(dlg.help_toggle.arrowType(), Qt.DownArrow)
-        self.assertIn("違反 Anthropic 使用條款", dlg.help.text())
-        self.assertIn("不碰登入憑證", dlg.help.text())
-
-    def test_radios_line_up_in_each_column(self):
-        # 業主截圖：Grok 的本機紀錄被「不支援」擠歪。同一欄的單選鈕中心 x 必須一致
-        from PySide6.QtWidgets import QRadioButton
-        dlg, _ = self.make({"grok"})
-        dlg.show()
-        self.qapp.processEvents()
-        centers = {}
-        for rb in dlg.findChildren(QRadioButton):
-            col = rb.objectName().split("_")[1]
-            centers.setdefault(col, set()).add(rb.mapTo(dlg, rb.rect().center()).x())
-        dlg.hide()
-        self.assertEqual({col: len(xs) for col, xs in centers.items()}, {"local": 1, "api": 1}, centers)
-
-    def test_claude_api_needs_confirmation(self):
-        from ai_quota_tray.settings import API, LOCAL
-        dlg, applied = self.make({"grok"})
-        dlg.groups["claude"].button(API).setChecked(True)
-        with mock.patch.object(dlg, "confirm_claude", return_value=False):
-            dlg.accept()
-        self.assertEqual(applied, [])  # 沒套用
-        self.assertEqual(dlg.groups["claude"].checkedId(), LOCAL)  # 退回本機紀錄
-        dlg.groups["claude"].button(API).setChecked(True)
-        with mock.patch.object(dlg, "confirm_claude", return_value=True):
-            dlg.accept()
-        self.assertEqual(applied, [{"claude", "grok"}])
+    def test_service_choices_and_source_descriptions(self):
+        from PySide6.QtWidgets import QLabel, QRadioButton
+        dlg, applied = self.make()
+        self.assertEqual(dlg.windowTitle(), "AI Quota Tray · 服務設定")
+        self.assertFalse(dlg.windowIcon().isNull())
+        self.assertEqual(dlg.selected_enabled(), {"claude", "codex"})
+        self.assertNotIn("grok", dlg.checks)
+        self.assertEqual(dlg.findChildren(QRadioButton), [])
+        descriptions = [w.text() for w in dlg.findChildren(QLabel) if w.objectName() == "sourceDescription"]
+        self.assertEqual(len(descriptions), 4)
+        self.assertTrue(any("官方 App Server" in text for text in descriptions))
+        self.assertTrue(any("官方 agy CLI" in text for text in descriptions))
+        dlg.checks["copilot"].setChecked(True)
+        dlg.accept()
+        self.assertEqual(applied, [({"claude", "codex", "copilot"}, "zh-TW")])
 
     def test_no_change_no_apply_and_cancel(self):
-        from ai_quota_tray.settings import API
-        dlg, applied = self.make({"grok"})
+        dlg, applied = self.make()
         dlg.accept()
-        self.assertEqual(applied, [])  # 沒改就不套用、不重抓
-        dlg2, applied2 = self.make({"grok"})
-        dlg2.groups["codex"].button(API).setChecked(True)
+        self.assertEqual(applied, [])
+        dlg2, applied2 = self.make()
+        dlg2.checks["codex"].setChecked(False)
         dlg2.reject()
-        self.assertEqual(applied2, [])  # 取消不套用
+        self.assertEqual(applied2, [])
 
 
 if __name__ == "__main__":

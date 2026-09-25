@@ -11,16 +11,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import QRect, QRectF, Qt, QTimer
+from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import placement
+from .i18n import join, tr, window_label
 from .icon import COLORS, level_for
 from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, STALE, ProviderState, Window,
                     format_age, format_countdown, utcnow)
 
-CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI", "grok": "Grok CLI"}
+CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
+            "antigravity": "Antigravity CLI"}
+# token 不會自己過期、「開一下 CLI」也沒用的，另外寫提示（i18n key）
+AUTH_HINT = {"antigravity": "card.auth_antigravity", "copilot": "card.auth_copilot"}
 
 THEMES = {
     "dark": {"bg": "#202124", "border": "#3c4043", "text": "#e8eaed", "dim": "#9aa0a6",
@@ -29,6 +33,7 @@ THEMES = {
               "track": "#e3e6ea", "warn": "#c5221f"},
 }
 CARD_WIDTH = 300
+BAR_WIDTH, BAR_MIN_WIDTH = 110, 60
 ERROR_TEXT_MAX = 60
 
 
@@ -43,14 +48,17 @@ def _rect(r: QRect) -> placement.Rect:
 
 def window_countdown(win: Window, state: ProviderState, now: datetime) -> str:
     if win.resets_at is None and win.label in state.detail.get("rolled_over", []):
-        return "已重置"
-    return format_countdown(win.resets_at, now)
+        return tr("card.rolled_over")
+    countdown = format_countdown(win.resets_at, now)
+    if win.label in state.detail.get("estimated_resets", []):
+        return tr("card.estimated_reset", countdown=countdown)
+    return countdown
 
 
 def header_note(state: ProviderState, now: datetime) -> tuple[str, bool]:
     """區塊右上角的小字：(文字, 是否警示色)。"""
     if state.detail.get("api_error"):
-        return "API 失敗，顯示本機紀錄", True
+        return tr("card.api_failed"), True
     if is_dimmed(state):
         return format_age(state.fetched_at, now), False
     plan = state.detail.get("subscription_tier") or state.detail.get("plan_type")
@@ -66,13 +74,21 @@ def is_dimmed(state: ProviderState | None) -> bool:
 
 def status_message(state: ProviderState) -> str:
     if state.status == AUTH_EXPIRED:
-        return f"Token 過期，請開一下 {CLI_NAME.get(state.name, 'CLI')}"
+        if state.name in AUTH_HINT:
+            return tr(AUTH_HINT[state.name])
+        return tr("card.auth_expired", cli=CLI_NAME.get(state.name, "CLI"))
     if state.status == DISABLED:
-        return "未啟用"
+        return tr("card.disabled")
     if state.status == ERROR:
-        err = state.error or "未知錯誤"
-        return "抓取失敗：" + (err if len(err) <= ERROR_TEXT_MAX else err[:ERROR_TEXT_MAX] + "…")
-    return "沒有額度資料"
+        err = state.error or tr("card.unknown_error")
+        return tr("card.error", err=err if len(err) <= ERROR_TEXT_MAX else err[:ERROR_TEXT_MAX] + "…")
+    if state.detail.get("unlimited"):  # 例如 Copilot 付費方案的 Chat／補全
+        return unlimited_text(state.detail["unlimited"])
+    return tr("card.no_data")
+
+
+def unlimited_text(labels: list[str]) -> str:
+    return tr("card.unlimited", items=join(window_label(x) for x in labels))
 
 
 class Bar(QWidget):
@@ -80,8 +96,15 @@ class Bar(QWidget):
 
     def __init__(self, remaining: float | None, color: str, track: str):
         super().__init__()
-        self.setFixedSize(110, 6)
+        # 平常 110 寬；label 比較長（英文的 Completions）時縮，否則右邊的 % 會壓到條上
+        self.setFixedHeight(6)
+        self.setMinimumWidth(BAR_MIN_WIDTH)
+        self.setMaximumWidth(BAR_WIDTH)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._remaining, self._color, self._track = remaining, QColor(color), QColor(track)
+
+    def sizeHint(self) -> QSize:
+        return QSize(BAR_WIDTH, 6)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
@@ -143,6 +166,10 @@ class Card(QWidget):
 
         right = Qt.AlignRight | Qt.AlignVCenter
         row = 0
+        if not states:
+            msg = label(tr("card.nothing_enabled"), t["dim"], small=True)
+            msg.setWordWrap(True)
+            grid.addWidget(msg, row, 0, 1, 4)
         for i, (name, state) in enumerate(states):
             if i:
                 grid.setRowMinimumHeight(row, 6)
@@ -155,7 +182,7 @@ class Card(QWidget):
             row += 1
 
             if state is None:
-                grid.addWidget(label("讀取中…", t["dim"], small=True), row, 0, 1, 4)
+                grid.addWidget(label(tr("card.loading"), t["dim"], small=True), row, 0, 1, 4)
                 row += 1
                 continue
 
@@ -178,7 +205,7 @@ class Card(QWidget):
                 remaining = win.remaining_pct
                 color = t["dim"] if dim or remaining is None else \
                     "#%02x%02x%02x" % COLORS[level_for(remaining)]
-                grid.addWidget(label(win.label, text_c), row, 0)
+                grid.addWidget(label(window_label(win.label), text_c), row, 0)
                 grid.addWidget(Bar(remaining, color, t["track"]), row, 1, Qt.AlignVCenter)
                 pct = "—" if remaining is None else f"{int(remaining)}%"
                 grid.addWidget(label(pct, text_c, bold=True, align=right), row, 2)
@@ -191,10 +218,10 @@ class Card(QWidget):
                 self._tickers.append(update_cd)
                 row += 1
 
-            products = state.detail.get("products") or []
-            if products:
-                text = "、".join(f"{p['product']} {int(p['usage_pct'])}%" for p in products)
-                grid.addWidget(label(f"已用佔比：{text}", t["dim"], small=True), row, 0, 1, 4)
+            unlimited = state.detail.get("unlimited") or []
+            if unlimited:
+                grid.addWidget(label(unlimited_text(unlimited), t["dim"], small=True),
+                               row, 0, 1, 4)
                 row += 1
 
             if state.status in (AUTH_EXPIRED, ERROR):  # 保留了上一次的數字，但要說明為什麼沒更新
@@ -206,6 +233,9 @@ class Card(QWidget):
         self._body = body
         self._outer.addWidget(body)
         if self.isVisible():
+            # 加進已顯示的視窗時 Qt 是「排隊」才顯示新內容，不先 show 的話 adjustSize 只量到
+            # 24px 高 → 卡片照小尺寸貼著工作列定位，內容長出來後下半截跑到螢幕外（2026-09-25 業主截圖）
+            body.show()
             self._reposition()
 
     def _tick(self) -> None:

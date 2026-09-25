@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "Windows 系統匣常駐工具：顯示各家 AI 訂閱的剩餘額度與重置倒數"
 requires-python = ">=3.11"
 # probe 只用標準函式庫；系統匣（tray）才需要下面這些。Win32 走 ctypes，不需要 pywin32
-dependencies = ["PySide6-Essentials>=6.8", "Pillow>=10"]
+dependencies = ["PySide6-Essentials>=6.8", "Pillow>=10", "github-copilot-sdk==1.0.14"]
 
 [project.scripts]
 ai-quota-tray = "ai_quota_tray.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ai_quota_tray*"]
+
+[tool.setuptools.package-data]
+ai_quota_tray = ["assets/*"]

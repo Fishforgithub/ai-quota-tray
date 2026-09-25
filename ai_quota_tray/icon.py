@@ -10,6 +10,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from .i18n import window_label
 from .model import ProviderState
 
 # 剩餘 % 低於門檻就換色；紅色門檻與通知門檻（< 10%）一致
@@ -48,8 +49,12 @@ def tooltip(states: list[ProviderState]) -> str:
     """給螢幕閱讀器的純文字摘要（系統匣 szTip 上限 127 字）。"""
     parts = []
     for s in states:
-        if s.windows:
-            wins = " ".join(f"{w.label} {int(w.remaining_pct)}%" for w in s.windows
+        if s.status == "stale":
+            parts.append(f"{s.name} {s.status}")
+        elif s.status in ("error", "auth_expired"):
+            parts.append(f"{s.name} {s.status}")
+        elif s.windows:
+            wins = " ".join(f"{window_label(w.label)} {int(w.remaining_pct)}%" for w in s.windows
                             if w.remaining_pct is not None)
             parts.append(f"{s.name} {wins}")
         else:

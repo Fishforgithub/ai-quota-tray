@@ -1,38 +1,20 @@
-"""設定視窗：每家勾「本機紀錄」或「API」。
-
-版面照業主的設計稿（2026-09-25）：一張三欄表（服務｜本機紀錄｜API），
-說明與風險全部收進底下可展開的「各資料來源的說明與限制」，預設收合。
-"""
+"""Service visibility and language settings."""
 from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication, QIcon
-from PySide6.QtWidgets import (QButtonGroup, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QMessageBox, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtCore import QRect, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QPixmap
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame,
+                               QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget)
 
-from .config import HAS_LOCAL_SOURCE
-from .icon import BRAND_PNG
+from . import i18n
+from .i18n import tr
+from .icon import ASSETS, BRAND_PNG
 from .model import DISPLAY_NAME
+from .providers import ALL
 
-ORDER = ("claude", "codex", "grok")
-LOCAL, API = 0, 1
-
-HEADING = "選擇各服務的用量資料來源"
-SUBTITLE = "每個服務只需選一種來源；可隨時回來更改。"
-HELP_TOGGLE = "各資料來源的說明與限制"
-HELP_TEXT = (
-    "・<b>本機紀錄</b>：讀 CLI 留在本機的紀錄，不碰登入憑證；沒在用 CLI 時數字會停住。<br>"
-    "・<b>API</b>：用 CLI 的登入 token 向伺服器查，隨時最新。<br>"
-    "・⚠️ Claude 用 API 違反 Anthropic 使用條款，可能被封鎖。<br>"
-    "・Grok 沒有本機紀錄，只能用 API；token 約 6 小時過期，過期請開一下 Grok CLI。"
-)
-CLAUDE_CONFIRM = (
-    "Claude 改用 API 違反 Anthropic 使用條款（Free／Pro／Max 的登入 token 只能用在 "
-    "Claude Code 與 claude.ai），曾經技術封鎖過，可能影響你的帳號。\n\n確定要改用 API 嗎？"
-)
+ORDER = tuple(ALL)
 
 PALETTE = {
     "dark": {"bg": "#23262b", "panel": "#1d2025", "line": "#3a3f47", "text": "#e8eaed",
@@ -40,7 +22,8 @@ PALETTE = {
     "light": {"bg": "#f6f7f9", "panel": "#ffffff", "line": "#d7dbe0", "text": "#1f2328",
               "dim": "#5f6368", "accent": "#1a73e8", "accent_hover": "#3b86ec", "button": "#e9ecef"},
 }
-CELL_MARGINS = (16, 9, 16, 9)
+STORE_URL = "https://apps.microsoft.com/detail/9MVGRHJJHX0M"
+DESKPET_BANNER = ASSETS / "deskpet-banner.webp"
 
 
 def _palette() -> dict[str, str]:
@@ -51,50 +34,31 @@ def _palette() -> dict[str, str]:
 def _style(p: dict[str, str]) -> str:
     return f"""
         QDialog {{ background: {p['bg']}; }}
-        QLabel {{ color: {p['text']}; }}
-        QLabel#sub, QLabel#head, QLabel#unsupported, QLabel#help {{ color: {p['dim']}; }}
+        QLabel, QCheckBox {{ color: {p['text']}; }}
+        QCheckBox:disabled {{ color: {p['dim']}; }}
+        QLabel#sub, QLabel#head, QLabel#sourceDescription, QLabel#langLabel {{
+            color: {p['dim']}; }}
         QLabel#heading {{ font-size: 12pt; }}
         QFrame#table {{ background: {p['panel']}; border: 1px solid {p['line']}; border-radius: 8px; }}
         QFrame#line {{ background: {p['line']}; border: none; }}
-        QToolButton#helpToggle {{ color: {p['dim']}; border: none; background: transparent; }}
-        QToolButton#helpToggle:hover {{ color: {p['text']}; }}
+        QComboBox {{ min-height: 28px; padding: 0 10px; border-radius: 6px; color: {p['text']};
+                    background: {p['button']}; border: 1px solid {p['line']}; }}
+        QComboBox QAbstractItemView {{ color: {p['text']}; background: {p['panel']};
+                                      selection-background-color: {p['accent']}; }}
         QPushButton {{ min-width: 88px; min-height: 30px; border-radius: 6px; padding: 0 14px;
                       color: {p['text']}; background: {p['button']}; border: 1px solid {p['line']}; }}
+        QPushButton#cancel, QPushButton#save {{ min-width: 116px; min-height: 38px; }}
         QPushButton#save {{ color: white; background: {p['accent']}; border: none; }}
         QPushButton#save:hover {{ background: {p['accent_hover']}; }}
+        QFrame#promo {{ background: #1c2948; border: 1px solid #60729b; border-radius: 9px; }}
+        QLabel#promoEyebrow {{ color: #b9caec; font-size: 8pt; font-weight: bold; }}
+        QLabel#promoTitle {{ color: #ffffff; font-size: 11pt; font-weight: bold; }}
+        QLabel#promoBody {{ color: #d8e2f7; font-size: 9pt; }}
+        QPushButton#promoButton {{ color: #30220c; background: #ffd77e; border: none;
+                                  border-radius: 6px; font-weight: bold; min-width: 0;
+                                  min-height: 34px; padding: 0 8px; }}
+        QPushButton#promoButton:hover {{ background: #ffe5aa; }}
     """
-
-
-def _cell(*widgets: QWidget, align=Qt.AlignCenter) -> QWidget:
-    box = QWidget()
-    lay = QHBoxLayout(box)
-    lay.setContentsMargins(*CELL_MARGINS)
-    lay.setSpacing(10)
-    lay.setAlignment(align)
-    for wdg in widgets:
-        lay.addWidget(wdg)
-    return box
-
-
-def _radio_cell(radio: QRadioButton, note: QLabel | None = None) -> QWidget:
-    """單選鈕永遠在欄位正中間；附註（例如「不支援」）放在右半邊，不影響置中。
-
-    左右兩側各放一個等寬（stretch 相同）的區塊，單選鈕夾在中間。
-    """
-    box = QWidget()
-    lay = QHBoxLayout(box)
-    lay.setContentsMargins(*CELL_MARGINS)
-    lay.setSpacing(0)
-    left, right = QWidget(), QWidget()
-    right_lay = QHBoxLayout(right)
-    right_lay.setContentsMargins(10, 0, 0, 0)
-    right_lay.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    if note is not None:
-        right_lay.addWidget(note)
-    lay.addWidget(left, 1)
-    lay.addWidget(radio, 0, Qt.AlignCenter)
-    lay.addWidget(right, 1)
-    return box
 
 
 def _line() -> QFrame:
@@ -105,123 +69,166 @@ def _line() -> QFrame:
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, token_sources: set[str], on_apply: Callable[[set[str]], None]):
+    def __init__(self, enabled: set[str], language: str,
+                 on_apply: Callable[[set[str], str], None]):
         super().__init__(None, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
-        self.setWindowTitle("AI Quota Tray · 資料來源")
         self.setWindowIcon(QIcon(str(BRAND_PNG)))
         self.setStyleSheet(_style(_palette()))
-        self.setFixedWidth(600)
-        self._initial = set(token_sources)
+        # Windows 的標題列約 37px；client 高 653px 對應參考圖的外框約 690px。
+        self.setFixedSize(590, 653)
+        self._initial_enabled = set(enabled)
+        self._initial_language = language if language in i18n.LANGUAGES else i18n.AUTO
         self._on_apply = on_apply
-        self.groups: dict[str, QButtonGroup] = {}
+        self.checks: dict[str, QCheckBox] = {}
+        self._texts: list[tuple[QLabel | QPushButton, str]] = []  # (元件, i18n key)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 20, 24, 18)
-        root.setSpacing(6)
-        heading = QLabel(HEADING)
-        heading.setObjectName("heading")
-        sub = QLabel(SUBTITLE)
-        sub.setObjectName("sub")
-        root.addWidget(heading)
-        root.addWidget(sub)
-        root.addSpacing(10)
+        root.setContentsMargins(31, 27, 31, 24)
+        root.setSpacing(0)
+        root.addWidget(self._text(QLabel(), "settings.heading", "heading"))
+        root.addSpacing(7)
+
+        top = QHBoxLayout()
+        top.setSpacing(9)
+        top.addWidget(self._text(QLabel(), "settings.subtitle", "sub"))
+        top.addStretch(1)
+        top.addWidget(self._text(QLabel(), "settings.language", "langLabel"))
+        self.language = QComboBox()
+        self.language.setObjectName("language")
+        self.language.setFixedWidth(108)
+        for code in i18n.LANGUAGES:
+            self.language.addItem(i18n.NATIVE_NAMES.get(code, ""), code)
+        self.language.setCurrentIndex(i18n.LANGUAGES.index(self._initial_language))
+        self.language.currentIndexChanged.connect(self._retranslate)
+        top.addWidget(self.language)
+        root.addLayout(top)
+
+        root.addSpacing(14)
         root.addWidget(self._table())
+        root.addSpacing(28)
+        root.addWidget(self._promo())
 
-        root.addSpacing(8)
-        self.help_toggle = QToolButton()
-        self.help_toggle.setObjectName("helpToggle")
-        self.help_toggle.setText(HELP_TOGGLE)
-        self.help_toggle.setCheckable(True)
-        self.help_toggle.setArrowType(Qt.RightArrow)
-        self.help_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.help_toggle.toggled.connect(self._toggle_help)
-        self.help = QLabel(HELP_TEXT)
-        self.help.setObjectName("help")
-        self.help.setWordWrap(True)
-        self.help.setContentsMargins(18, 0, 0, 0)
-        self.help.setVisible(False)
-        root.addWidget(self.help_toggle, alignment=Qt.AlignLeft)
-        root.addWidget(self.help)
-
-        root.addSpacing(6)
+        root.addSpacing(16)
         buttons = QHBoxLayout()
+        buttons.setSpacing(10)
         buttons.addStretch(1)
-        cancel = QPushButton("取消")
+        cancel = self._text(QPushButton(), "settings.cancel", "cancel")
+        cancel.setFixedWidth(147)
         cancel.clicked.connect(self.reject)
-        save = QPushButton("儲存")
-        save.setObjectName("save")
+        save = self._text(QPushButton(), "settings.save", "save")
+        save.setFixedWidth(145)
         save.setDefault(True)
         save.clicked.connect(self.accept)
         buttons.addWidget(cancel)
         buttons.addWidget(save)
         root.addLayout(buttons)
 
-        self.select(self._initial)
+        self.select(self._initial_enabled)
+        self._retranslate()
+
+    def _text(self, widget, key: str, name: str | None = None):
+        """登記一個要跟著語言換字的元件。"""
+        if name:
+            widget.setObjectName(name)
+        self._texts.append((widget, key))
+        return widget
 
     def _table(self) -> QFrame:
         table = QFrame()
         table.setObjectName("table")
-        grid = QGridLayout(table)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(0)
-        grid.setColumnStretch(0, 3)
-        grid.setColumnStretch(1, 2)
-        grid.setColumnStretch(2, 2)
+        table.setFixedHeight(260)
+        rows = QVBoxLayout(table)
+        rows.setContentsMargins(1, 1, 1, 1)
+        rows.setSpacing(0)
 
-        for col, text in enumerate(("服務", "本機紀錄", "API")):
-            head = QLabel(text)
-            head.setObjectName("head")
-            grid.addWidget(_cell(head, align=Qt.AlignLeft if col == 0 else Qt.AlignCenter), 0, col)
+        header = QWidget()
+        header.setFixedHeight(43)
+        head_layout = QHBoxLayout(header)
+        head_layout.setContentsMargins(20, 0, 20, 0)
+        head_layout.setSpacing(5)
+        service_head = self._text(QLabel(), "settings.col.service", "head")
+        service_head.setFixedWidth(125)
+        head_layout.addWidget(service_head)
+        head_layout.addWidget(self._text(QLabel(), "settings.col.description", "head"), 1)
+        rows.addWidget(header)
+        rows.addWidget(_line())
 
-        row = 1
         for name in ORDER:
-            grid.addWidget(_line(), row, 0, 1, 3)
-            row += 1
-            group = QButtonGroup(self)
-            local, api = QRadioButton(), QRadioButton()
-            local.setObjectName(f"{name}_local")
-            api.setObjectName(f"{name}_api")
-            local.setAccessibleName(f"{DISPLAY_NAME[name]} 本機紀錄")
-            api.setAccessibleName(f"{DISPLAY_NAME[name]} API")
-            group.addButton(local, LOCAL)
-            group.addButton(api, API)
-            self.groups[name] = group
-
-            note = None
-            if not HAS_LOCAL_SOURCE[name]:
-                local.setEnabled(False)
-                note = QLabel("不支援")
-                note.setObjectName("unsupported")
-            grid.addWidget(_cell(QLabel(DISPLAY_NAME[name]), align=Qt.AlignLeft), row, 0)
-            grid.addWidget(_radio_cell(local, note), row, 1)
-            grid.addWidget(_radio_cell(api), row, 2)
-            row += 1
+            row = QWidget()
+            row.setFixedHeight(53)
+            line = QHBoxLayout(row)
+            line.setContentsMargins(20, 0, 20, 0)
+            line.setSpacing(5)
+            check = QCheckBox(DISPLAY_NAME[name])
+            check.setObjectName(f"{name}_enabled")
+            check.setFixedWidth(125)
+            self.checks[name] = check
+            line.addWidget(check)
+            description = self._text(QLabel(), f"settings.source.{name}", "sourceDescription")
+            description.setWordWrap(True)
+            line.addWidget(description, 1)
+            rows.addWidget(row)
+            if name != ORDER[-1]:
+                rows.addWidget(_line())
         return table
 
-    def _toggle_help(self, shown: bool) -> None:
-        self.help_toggle.setArrowType(Qt.DownArrow if shown else Qt.RightArrow)
-        self.help.setVisible(shown)
-        self.adjustSize()
+    def _promo(self) -> QFrame:
+        promo = QFrame()
+        promo.setObjectName("promo")
+        layout = QHBoxLayout(promo)
+        promo.setFixedHeight(187)
+        layout.setContentsMargins(10, 10, 12, 10)
+        layout.setSpacing(14)
 
-    def select(self, token_sources: set[str]) -> None:
-        for name, group in self.groups.items():
-            use_api = name in token_sources or not HAS_LOCAL_SOURCE[name]
-            group.button(API if use_api else LOCAL).setChecked(True)
+        art = QLabel()
+        art.setObjectName("promoArt")
+        art.setFixedSize(188, 165)
+        source = QPixmap(str(DESKPET_BANNER)).copy(QRect(380, 0, 740, 480))
+        scaled = source.scaled(188, 165, Qt.KeepAspectRatioByExpanding,
+                               Qt.SmoothTransformation)
+        x, y = (scaled.width() - 188) // 2, (scaled.height() - 165) // 2
+        art.setPixmap(scaled.copy(x, y, 188, 165))
+        layout.addWidget(art)
 
-    def selected(self) -> set[str]:
-        return {name for name, group in self.groups.items() if group.checkedId() == API}
+        copy = QVBoxLayout()
+        copy.setContentsMargins(0, 1, 0, 1)
+        copy.setSpacing(5)
+        copy.addWidget(self._text(QLabel(), "settings.promo_eyebrow", "promoEyebrow"))
+        copy.addWidget(self._text(QLabel(), "settings.promo_title", "promoTitle"))
+        body = self._text(QLabel(), "settings.promo_body", "promoBody")
+        body.setWordWrap(True)
+        copy.addWidget(body)
+        copy.addStretch(1)
+        button = self._text(QPushButton(), "settings.promo_cta", "promoButton")
+        button.setCursor(Qt.PointingHandCursor)
+        button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(STORE_URL)))
+        copy.addWidget(button)
+        layout.addLayout(copy, 1)
+        return promo
 
-    def confirm_claude(self) -> bool:
-        box = QMessageBox(QMessageBox.Warning, "AI Quota Tray", CLAUDE_CONFIRM,
-                          QMessageBox.Yes | QMessageBox.No, self)
-        box.setDefaultButton(QMessageBox.No)
-        return box.exec() == QMessageBox.Yes
+    def selected_language(self) -> str:
+        return self.language.currentData()
+
+    def preview_language(self) -> str:
+        """畫面現在用的語言（auto 解析成實際語言）。"""
+        return i18n.resolve(self.selected_language())
+
+    def _retranslate(self, *_args) -> None:
+        lang = self.preview_language()
+        self.setWindowTitle(tr("settings.title", lang))
+        for widget, key in self._texts:
+            widget.setText(tr(key, lang))
+        self.language.setItemText(0, tr("settings.lang.auto", lang))
+
+    def select(self, enabled: set[str]) -> None:
+        for name, check in self.checks.items():
+            check.setChecked(name in enabled)
+
+    def selected_enabled(self) -> set[str]:
+        return {name for name, check in self.checks.items() if check.isChecked()}
 
     def accept(self) -> None:
-        chosen = self.selected()
-        if "claude" in chosen and "claude" not in self._initial and not self.confirm_claude():
-            self.groups["claude"].button(LOCAL).setChecked(True)
-            return  # 留在視窗上
-        if chosen != self._initial:
-            self._on_apply(chosen)
+        enabled, language = self.selected_enabled(), self.selected_language()
+        if enabled != self._initial_enabled or language != self._initial_language:
+            self._on_apply(enabled, language)
         super().accept()

@@ -31,6 +31,12 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(format_age(NOW - timedelta(days=4, hours=1), NOW), "4 天前")
         self.assertEqual(format_age(None, NOW), "時間不明")
 
+    def test_estimated_copilot_reset_is_labeled(self):
+        win = make_window(25, NOW + timedelta(days=3), None, label="Chat")
+        state = ProviderState("copilot", [win], NOW, OK,
+                              {"estimated_resets": ["Chat"]})
+        self.assertEqual(window_countdown(win, state, NOW), "約 3d00h")
+
 
 # 1920x1200、125%、工作列在底部 48 邏輯像素（實測機器的形狀）
 MAIN = placement.Screen((0, 0, 1536, 960), (0, 0, 1536, 912), 1.25)
@@ -86,12 +92,12 @@ class CardTest(unittest.TestCase):
                     fetched_at=NOW - timedelta(minutes=20))
         self.assertEqual(window_countdown(rolled.windows[0], rolled, NOW), "已重置")
         self.assertEqual(header_note(rolled, NOW), ("20 分鐘前", False))
-        self.assertEqual(header_note(st("grok", detail={"subscription_tier": "GrokPro"}), NOW),
-                         ("GrokPro", False))
+        self.assertEqual(header_note(st("codex", detail={"plan_type": "Plus"}), NOW),
+                         ("Plus", False))
         self.assertTrue(header_note(st("codex", detail={"api_error": "HTTP 500"}), NOW)[1])
-        self.assertIn("Grok CLI", status_message(st("grok", AUTH_EXPIRED)))
-        self.assertEqual(status_message(st("grok", DISABLED)), "未啟用")
-        self.assertTrue(status_message(st("grok", ERROR, error="x" * 200)).endswith("…"))
+        self.assertIn("Codex CLI", status_message(st("codex", AUTH_EXPIRED)))
+        self.assertEqual(status_message(st("claude", DISABLED)), "未啟用")
+        self.assertTrue(status_message(st("claude", ERROR, error="x" * 200)).endswith("…"))
 
     def test_builds_every_state_and_rebuilds(self):
         card = Card()
@@ -101,19 +107,59 @@ class CardTest(unittest.TestCase):
                                              make_window(7, now + timedelta(days=5), 604800)])),
             ("codex", st("codex", STALE, [make_window(0, None, 18000)],
                          detail={"rolled_over": ["5h"]}, fetched_at=now - timedelta(hours=2))),
-            ("grok", st("grok", windows=[make_window(92, now + timedelta(days=1), 604800)],
-                        detail={"products": [{"product": "GrokBuild", "usage_pct": 92.0}]})),
+            ("copilot", st("copilot", windows=[make_window(92, now + timedelta(days=1), 604800)])),
         ]
         card.set_states(states)
         texts = [lbl.text() for lbl in card.findChildren(QLabel)]
         self.assertIn("8%", texts)
         self.assertIn("↻ 已重置", texts)
         self.assertIn("2 小時前", texts)
-        card.set_states([("claude", None), ("grok", st("grok", AUTH_EXPIRED))])
+        card.set_states([("claude", None), ("copilot", st("copilot", AUTH_EXPIRED))])
         card.adjustSize()
         texts = [lbl.text() for lbl in card.findChildren(QLabel)]
         self.assertIn("讀取中…", texts)
         self.assertNotIn("8%", texts)
+        card.deleteLater()
+
+    def test_growing_while_open_stays_on_screen(self):
+        # 卡片開著時資料更新、內容變多，底部不能跑出可用區域（業主截圖：Copilot 被切在工作列下）
+        from PySide6.QtGui import QGuiApplication
+        now = datetime.now(timezone.utc)
+        area = QGuiApplication.primaryScreen().availableGeometry()
+        anchor = (area.right() - 40, area.bottom() - 30, area.right() - 20, area.bottom() - 5)
+
+        def full(name, n=2):
+            return name, st(name, windows=[make_window(10 * i, now + timedelta(hours=i + 1), 18000)
+                                           for i in range(n)])
+        card = Card()
+        card.set_states([full("claude"), ("codex", None)])
+        card.show_at(anchor)
+        self.app.processEvents()
+        card.set_states([full("claude"), full("codex"), full("antigravity", 4),
+                         full("copilot")])
+        for _ in range(3):
+            self.app.processEvents()
+        self.assertLessEqual(card.geometry().bottom(), area.bottom())
+        self.assertGreater(card.height(), 200)
+        card.hide()
+        card.deleteLater()
+
+    def test_new_providers_and_nothing_enabled(self):
+        self.assertIn("copilot login", status_message(st("copilot", AUTH_EXPIRED)))
+        self.assertIn("Antigravity CLI", status_message(st("antigravity", AUTH_EXPIRED)))
+        self.assertEqual(status_message(st("copilot", detail={"unlimited": ["Chat", "補全"]})),
+                         "無上限：Chat、補全")
+        card = Card()
+        now = datetime.now(timezone.utc)
+        card.set_states([("copilot", st("copilot", windows=[
+            make_window(90, now + timedelta(days=6), None, label="進階")],
+            detail={"unlimited": ["Chat", "補全"], "plan_type": "Business"}))])
+        texts = [lbl.text() for lbl in card.findChildren(QLabel)]
+        self.assertIn("Copilot", texts)
+        self.assertIn("無上限：Chat、補全", texts)
+        card.set_states([])
+        texts = [lbl.text() for lbl in card.findChildren(QLabel)]
+        self.assertTrue(any("沒有啟用任何服務" in t for t in texts))
         card.deleteLater()
 
 

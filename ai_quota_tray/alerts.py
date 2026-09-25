@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .config import data_dir
+from .i18n import tr, window_label
 from .icon import RED_BELOW
 from .model import DISPLAY_NAME, OK, STALE, ProviderState, format_countdown, iso, parse_time
 
@@ -42,9 +43,10 @@ def due_alerts(states: list[ProviderState], notified: set[str],
             key = alert_key(s.name, w.label, w.resets_at)
             if key in notified:
                 continue
-            name = DISPLAY_NAME.get(s.name, s.name)
-            reset = f"，{format_countdown(w.resets_at, now)} 後重置" if w.resets_at else ""
-            out.append((key, f"{name} {w.label}額度剩 {int(r)}%", f"{name} 的{w.label}視窗只剩 {int(r)}%{reset}。"))
+            args = {"name": DISPLAY_NAME.get(s.name, s.name), "label": window_label(w.label),
+                    "pct": int(r)}
+            reset = tr("alert.reset", countdown=format_countdown(w.resets_at, now))                 if w.resets_at else ""
+            out.append((key, tr("alert.title", **args), tr("alert.body", reset=reset, **args)))
     return out
 
 

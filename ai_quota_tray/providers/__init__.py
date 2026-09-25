@@ -5,9 +5,10 @@ import traceback
 from datetime import datetime
 
 from ..model import ERROR, ProviderState
-from . import claude, codex, grok
+from . import antigravity, claude, codex, copilot
 
-ALL = {m.NAME: m for m in (claude, codex, grok)}
+# 順序＝卡片與設定視窗的顯示順序
+ALL = {m.NAME: m for m in (claude, codex, antigravity, copilot)}
 
 
 def fetch_one(name: str, use_token: bool, now: datetime) -> ProviderState:

@@ -3,9 +3,7 @@
 首選來源：statusLine hook（D:\\FISH\\tools\\claude-monitor\\statusline-usage.js）寫的
 ~/.claude/usage-cache.json，格式：
     {"fetchedAt": <ms>, "rate_limits": {"five_hour": {"used_percentage": 9, "resets_at": <s>}, ...}}
-不碰 token，上線版唯一來源。
-
-選配：GET https://api.anthropic.com/api/oauth/usage（⚠️ Consumer ToS 風險，見 CLAUDE.md §3）。
+不碰 token，也不呼叫 Claude OAuth API。
 """
 from __future__ import annotations
 
@@ -14,12 +12,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from .. import net
-from ..model import (AUTH_EXPIRED, ERROR, OK, AuthExpired, ProviderState, Window,
-                     apply_file_freshness, make_window, parse_time, utcnow)
+from ..model import OK, ProviderState, Window, apply_file_freshness, make_window, parse_time, utcnow
 
 NAME = "claude"
-USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 
 # rate_limits 的 key 前綴 → 視窗長度；後綴（例如 seven_day_opus 的 opus）接在 label 後面
 _PREFIX_DURATION = {"five_hour": 5 * 3600, "seven_day": 7 * 86400}
@@ -29,11 +24,6 @@ def cache_path() -> Path:
     # 與 statusline-usage.js 的 CACHE_PATH 保持一致
     env = os.environ.get("CLAUDE_USAGE_CACHE")
     return Path(env) if env else Path.home() / ".claude" / "usage-cache.json"
-
-
-def credentials_path() -> Path:
-    base = os.environ.get("CLAUDE_CONFIG_DIR")
-    return (Path(base) if base else Path.home() / ".claude") / ".credentials.json"
 
 
 def parse_windows(limits: dict, pct_field: str) -> tuple[list[Window], dict]:
@@ -69,12 +59,6 @@ def parse_cache(data: dict, now: datetime) -> ProviderState:
     return apply_file_freshness(state, now)
 
 
-def parse_oauth_usage(data: dict, now: datetime) -> ProviderState:
-    windows, unknown = parse_windows(data, "utilization")
-    detail = {"unknown_keys": unknown} if unknown else {}
-    return ProviderState(NAME, windows, now, OK, detail, source="oauth-api", raw=data)
-
-
 def fetch_cache(now: datetime) -> ProviderState:
     path = cache_path()
     if not path.exists():
@@ -82,31 +66,6 @@ def fetch_cache(now: datetime) -> ProviderState:
     return parse_cache(json.loads(path.read_text(encoding="utf-8")), now)
 
 
-def fetch_oauth(now: datetime) -> ProviderState:
-    oauth = json.loads(credentials_path().read_text(encoding="utf-8")).get("claudeAiOauth") or {}
-    token = oauth.get("accessToken")
-    expires = parse_time(oauth.get("expiresAt"))
-    if not token or (expires and expires <= now):
-        raise AuthExpired("token 已過期，請開一下 Claude Code")
-    data = net.get_json(USAGE_URL, {
-        "Authorization": f"Bearer {token}",
-        "anthropic-beta": "oauth-2025-04-20",
-    })
-    return parse_oauth_usage(data, now)
-
-
 def fetch(use_token: bool = False, now: datetime | None = None) -> ProviderState:
     now = now or utcnow()
-    if not use_token:
-        return fetch_cache(now)
-    try:
-        return fetch_oauth(now)
-    except (AuthExpired, net.HttpError) as exc:
-        # API 不能用時退回 cache；cache 也沒有才回報 API 的錯
-        try:
-            state = fetch_cache(now)
-        except (OSError, ValueError):
-            status = AUTH_EXPIRED if isinstance(exc, AuthExpired) else ERROR
-            return ProviderState(NAME, [], None, status, source="oauth-api", error=str(exc))
-        state.detail["api_error"] = str(exc)
-        return state
+    return fetch_cache(now)

@@ -1,5 +1,5 @@
-"""P1 解析邏輯測試。夾具取自 2026-09-25 實測回傳（Claude cache、Codex rollout / wham）
-與 quse 記錄的 Grok 格式。只測純函式，不打網路。
+"""Provider 解析邏輯測試。Codex 官方回傳夾具依 App Server 文件。
+只測純函式，不打網路。
 
     python -m unittest discover -s tests
 """
@@ -11,9 +11,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE,
+from ai_quota_tray import wincred
+from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE, AuthExpired,
                                  label_for_duration, mask_secrets, parse_time, to_float)
-from ai_quota_tray.providers import claude, codex, fetch_one, grok
+from ai_quota_tray.providers import ALL, antigravity, claude, codex, copilot, fetch_one
 
 NOW = datetime(2026, 9, 25, 6, 0, tzinfo=timezone.utc)
 EPOCH_NOW = int(NOW.timestamp())
@@ -94,16 +95,14 @@ class ClaudeTest(unittest.TestCase):
         self.assertEqual(state.windows[1].used_pct, 7.0)
         self.assertEqual(state.detail["rolled_over"], ["5h"])
 
-    def test_oauth_usage_with_model_specific_and_unknown_keys(self):
-        state = claude.parse_oauth_usage({
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-09-25T09:00:00Z"},
-            "seven_day": {"utilization": 10.0, "resets_at": "2026-09-30T17:00:00Z"},
-            "seven_day_opus": {"utilization": 3.0, "resets_at": "2026-09-30T17:00:00Z"},
-            "seven_day_sonnet": None,
-            "extra_usage": {"is_enabled": False},
-        }, NOW)
-        self.assertEqual([w.label for w in state.windows], ["5h", "週", "週·opus"])
-        self.assertIn("extra_usage", state.detail["unknown_keys"])
+    def test_legacy_token_flag_still_uses_local_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "usage-cache.json"
+            path.write_text(json.dumps(self.cache(EPOCH_NOW * 1000, EPOCH_NOW + 3600,
+                                                  EPOCH_NOW + 86400)), encoding="utf-8")
+            with mock.patch.dict(os.environ, {"CLAUDE_USAGE_CACHE": str(path)}):
+                state = claude.fetch(use_token=True, now=NOW)
+        self.assertEqual(state.source, "statusline-cache")
 
     def test_cache_without_rate_limits_raises(self):
         with self.assertRaises(ValueError):
@@ -139,13 +138,20 @@ class CodexTest(unittest.TestCase):
         state = codex.parse_event(event, NOW)
         self.assertEqual(state.windows[0].resets_at, datetime(2026, 9, 25, 6, 1, tzinfo=timezone.utc))
 
-    def test_api_weekly_in_primary_window(self):
-        state = codex.parse_api({"plan_type": "plus", "rate_limit": {
-            "primary_window": {"used_percent": 20, "limit_window_seconds": 604800,
-                               "reset_after_seconds": 3600},
-            "secondary_window": None}}, NOW)
+    def test_app_server_weekly_in_primary_window(self):
+        state = codex.parse_app_server({"rateLimitsByLimitId": {"codex": {
+            "limitId": "codex", "planType": "plus",
+            "primary": {"usedPercent": 20, "windowDurationMins": 10080,
+                        "resetsAt": EPOCH_NOW + 3600}, "secondary": None}}}, NOW)
         self.assertEqual([w.label for w in state.windows], ["週"])
         self.assertEqual(state.windows[0].resets_at, NOW + timedelta(hours=1))
+        self.assertEqual(state.source, "codex-app-server")
+        self.assertEqual(state.detail["plan_type"], "plus")
+
+    def test_app_server_does_not_show_another_bucket_as_codex(self):
+        with self.assertRaises(ValueError):
+            codex.parse_app_server({"rateLimitsByLimitId": {"other": {
+                "limitId": "other", "primary": {"usedPercent": 42}}}}, NOW)
 
     def test_rollout_discovery_skips_files_without_rate_limits(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,71 +166,138 @@ class CodexTest(unittest.TestCase):
             no_limits = {"type": "event_msg", "payload": {"type": "token_count", "rate_limits": None}}
             newer.write_text(json.dumps(no_limits) + "\n{\"truncated", encoding="utf-8")
             os.utime(older, (1, 1))
-            with mock.patch.dict(os.environ, {"CODEX_HOME": tmp}):
+            with mock.patch.dict(os.environ, {"CODEX_HOME": tmp}), \
+                    mock.patch.object(codex.client, "rate_limits", side_effect=codex.AppServerError("unavailable")):
                 state = codex.fetch(now=NOW)
         self.assertEqual(state.detail["file"], "rollout-a.jsonl")
         self.assertEqual(state.windows[0].used_pct, 5.0)
+        self.assertEqual(state.detail["api_error"], "unavailable")
 
 
-class GrokTest(unittest.TestCase):
-    def test_weekly_pool_uses_credit_usage_percent(self):
-        credits = {"config": {
-            "currentPeriod": {"type": "USAGE_PERIOD_TYPE_WEEKLY",
-                              "start": "2026-09-21T00:00:00Z", "end": "2026-09-28T00:00:00Z"},
-            "creditUsagePercent": 37.5,
-            "productUsage": [{"product": "GrokBuild", "usagePercent": 20}, {"product": "Chat"}],
-            "onDemandCap": {"val": 100}}}
-        state = grok.parse_billing(credits, None, {"subscriptionTier": "SuperGrok"}, NOW)
-        self.assertEqual(len(state.windows), 1)
-        week = state.windows[0]
-        self.assertEqual((week.label, week.used_pct), ("週", 37.5))
-        self.assertEqual(week.resets_at, datetime(2026, 9, 28, tzinfo=timezone.utc))
-        self.assertEqual(state.detail["products"],
-                         [{"product": "GrokBuild", "usage_pct": 20.0}, {"product": "Chat", "usage_pct": 0.0}])
-        self.assertEqual(state.detail["subscription_tier"], "SuperGrok")
+class AntigravityTest(unittest.TestCase):
+    SAMPLE_USAGE = {
+        "status": "SUCCESS",
+        "command": {
+            "name": "usage",
+            "data": {
+                "description": "Within each group, models share a weekly limit.",
+                "groups": [
+                    {
+                        "name": "Gemini Models",
+                        "description": "Models within this group: Gemini Flash, Gemini Pro",
+                        "buckets": [
+                            {
+                                "id": "gemini-weekly",
+                                "name": "Weekly Limit Remaining",
+                                "window": "weekly",
+                                "remaining_fraction": 0.8,
+                                "reset_time": "2026-10-02T15:00:00Z",
+                            }
+                        ],
+                    },
+                    {
+                        "name": "Claude and GPT models",
+                        "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+                        "buckets": [
+                            {
+                                "id": "3p-weekly",
+                                "name": "Weekly Limit Remaining",
+                                "window": "weekly",
+                                "remaining_fraction": 1.0,
+                                "reset_time": "2026-10-02T16:00:00Z",
+                            }
+                        ],
+                    },
+                ],
+            },
+        },
+    }
 
-    def test_proto3_omitted_percent_means_zero(self):
-        credits = {"currentPeriod": {"type": "USAGE_PERIOD_TYPE_WEEKLY"},
-                   "billingPeriodEnd": "2026-09-28T00:00:00Z"}
-        state = grok.parse_billing(credits, None, None, NOW)
-        week = state.windows[0]
-        self.assertEqual((week.label, week.used_pct, week.duration_s), ("週", 0.0, 604800))
-        self.assertEqual(week.resets_at, datetime(2026, 9, 28, tzinfo=timezone.utc))
+    def test_parse_usage_groups(self):
+        state = antigravity.parse_usage(self.SAMPLE_USAGE, NOW)
+        self.assertEqual(state.status, OK)
+        self.assertEqual(state.source, "agy-cli")
+        self.assertEqual(len(state.windows), 2)
+        w0, w1 = state.windows[0], state.windows[1]
+        self.assertEqual((w0.label, w0.used_pct, w0.remaining_pct), ("Gemini", 20.0, 80.0))
+        self.assertEqual(w0.resets_at, datetime(2026, 10, 2, 15, 0, tzinfo=timezone.utc))
+        self.assertEqual(w0.duration_s, 604800)
+        self.assertEqual((w1.label, w1.used_pct, w1.remaining_pct), ("Claude/GPT", 0.0, 100.0))
+        self.assertEqual(w1.resets_at, datetime(2026, 10, 2, 16, 0, tzinfo=timezone.utc))
+        self.assertEqual(state.detail["description"], "Within each group, models share a weekly limit.")
 
-    def test_on_demand_fallback_and_monthly_window(self):
-        credits = {"onDemandUsed": {"val": 25}, "onDemandCap": {"val": 50}}
-        monthly = {"monthlyLimit": {"val": 200}, "used": {"val": 50},
-                   "billingPeriodEnd": "2026-10-01T00:00:00Z"}
-        state = grok.parse_billing(credits, monthly, None, NOW)
-        self.assertEqual([(w.label, w.used_pct) for w in state.windows], [("?", 50.0), ("月", 25.0)])
+    def test_unrecognized_usage_is_not_reported_as_success(self):
+        with self.assertRaises(ValueError):
+            antigravity.parse_usage({"status": "SUCCESS", "command": {"data": {}}}, NOW)
 
-    def test_no_weekly_period_and_no_monthly_limit(self):
-        state = grok.parse_billing({}, {"monthlyLimit": 0}, None, NOW)
-        self.assertEqual(state.windows, [])
+    def test_proto3_omitted_remaining_fraction(self):
+        data = {
+            "status": "SUCCESS",
+            "command": {
+                "data": {
+                    "groups": [
+                        {"name": "Gemini Models", "buckets": [{"window": "weekly", "reset_time": "2026-10-02T15:00:00Z"}]}
+                    ]
+                }
+            },
+        }
+        state = antigravity.parse_usage(data, NOW)
+        w = state.windows[0]
+        self.assertEqual((w.label, w.used_pct, w.remaining_pct), ("Gemini", 100.0, 0.0))
 
-    def test_disabled_without_token(self):
-        self.assertEqual(grok.fetch(use_token=False, now=NOW).status, DISABLED)
+    def test_tsv_fallback_when_groups_missing(self):
+        data = {
+            "status": "SUCCESS",
+            "response": "Gemini Models\tWeekly Limit Remaining\t75%\t2026-10-02T15:00:00Z\nClaude and GPT models\tWeekly Limit Remaining\t100%\t2026-10-02T16:00:00Z\n",
+        }
+        state = antigravity.parse_usage(data, NOW)
+        self.assertEqual(len(state.windows), 2)
+        self.assertEqual(state.windows[0].label, "Gemini")
+        self.assertEqual(state.windows[0].used_pct, 25.0)
+        self.assertEqual(state.windows[1].label, "Claude/GPT")
+        self.assertEqual(state.windows[1].used_pct, 0.0)
 
-    def test_expired_token_is_not_refreshed(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "auth.json").write_text(json.dumps({"https://auth.x.ai::x": {
-                "key": "tok", "refresh_token": "r", "expires_at": "2026-09-24T20:07:18.2379537Z"}}),
-                encoding="utf-8")
-            with mock.patch.dict(os.environ, {"GROK_HOME": tmp}), \
-                    mock.patch.object(grok.net, "get_json") as get_json:
-                state = grok.fetch(use_token=True, now=NOW)
-            content = (Path(tmp) / "auth.json").read_text(encoding="utf-8")
+    def test_use_token_does_not_matter(self):
+        # 只有 agy CLI 一種來源、不碰 token
+        with mock.patch.object(antigravity, "run_agy_usage", return_value=self.SAMPLE_USAGE):
+            self.assertEqual(antigravity.fetch(use_token=False, now=NOW).status, OK)
+
+    def test_fetch_success_with_token(self):
+        with mock.patch.object(antigravity, "run_agy_usage", return_value=self.SAMPLE_USAGE):
+            state = antigravity.fetch(use_token=True, now=NOW)
+        self.assertEqual(state.status, OK)
+        self.assertEqual(state.source, "agy-cli")
+        self.assertEqual(len(state.windows), 2)
+
+    def test_unauthenticated_error_raises_auth_expired(self):
+        with mock.patch.object(antigravity, "run_agy_usage", side_effect=AuthExpired("未登入")):
+            state = antigravity.fetch(use_token=True, now=NOW)
         self.assertEqual(state.status, AUTH_EXPIRED)
-        get_json.assert_not_called()
-        self.assertIn('"tok"', content)  # 檔案沒被動過
+        self.assertIn("未登入", state.error)
+
+
+class WinCredTest(unittest.TestCase):
+    def test_decode_blob(self):
+        self.assertEqual(wincred.decode_blob(b"gho_abc"), "gho_abc")
+        self.assertEqual(wincred.decode_blob("gho_abc".encode("utf-16-le")), "gho_abc")
+        self.assertEqual(wincred.decode_blob(b"go-keyring-base64:Z2hvX2FiYw=="), "gho_abc")
+        self.assertEqual(wincred.decode_blob(b'{"access_token": "x"}'), '{"access_token": "x"}')
+        self.assertIsNone(wincred.decode_blob(b""))
+        self.assertIsNone(wincred.decode_blob(b"\xff\xfe\x00\x01\x02"))
+
+    def test_missing_target_is_none(self):
+        self.assertIsNone(wincred.read_generic("ai-quota-tray:unittest:does-not-exist"))
 
 
 class ProbeTest(unittest.TestCase):
     def test_one_provider_crash_does_not_break_others(self):
-        with mock.patch.object(grok, "fetch", side_effect=KeyError("boom")):
-            state = fetch_one("grok", True, NOW)
+        with mock.patch.object(claude, "fetch", side_effect=KeyError("boom")):
+            state = fetch_one("claude", False, NOW)
         self.assertEqual(state.status, ERROR)
         self.assertIn("boom", state.error)
+
+    def test_private_grok_provider_is_not_registered(self):
+        self.assertNotIn("grok", ALL)
 
 
 if __name__ == "__main__":
