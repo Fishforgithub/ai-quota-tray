@@ -3,7 +3,8 @@ name = "ai-quota-tray"
 version = "0.1.0"
 description = "Windows 系統匣常駐工具：顯示各家 AI 訂閱的剩餘額度與重置倒數"
 requires-python = ">=3.11"
-dependencies = []  # P1 只用標準函式庫；P2 起加 PySide6 / pywin32 / Pillow / watchdog
+# probe 只用標準函式庫；系統匣（tray）才需要下面這些。Win32 走 ctypes，不需要 pywin32
+dependencies = ["PySide6-Essentials>=6.8", "Pillow>=10"]
 
 [project.scripts]
 ai-quota-tray = "ai_quota_tray.__main__:main"
