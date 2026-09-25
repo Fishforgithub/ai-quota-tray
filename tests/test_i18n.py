@@ -125,7 +125,8 @@ class SettingsLanguageTest(unittest.TestCase):
         dlg.language.setCurrentIndex(i18n.LANGUAGES.index("en"))
         dlg.accept()
         self.assertEqual(len(applied), 1)
-        enabled, language = applied[0]
+        enabled, language, demo = applied[0]
+        self.assertFalse(demo)
         self.assertEqual((enabled, language), ({"claude", "codex"}, "en"))
 
     def test_opens_in_saved_language(self):

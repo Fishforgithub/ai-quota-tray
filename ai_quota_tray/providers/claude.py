@@ -12,7 +12,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from ..model import OK, ProviderState, Window, apply_file_freshness, make_window, parse_time, utcnow
+from ..model import (ERROR, OK, ProviderState, Window, apply_file_freshness, make_window,
+                     parse_time, utcnow)
 
 NAME = "claude"
 
@@ -68,4 +69,9 @@ def fetch_cache(now: datetime) -> ProviderState:
 
 def fetch(use_token: bool = False, now: datetime | None = None) -> ProviderState:
     now = now or utcnow()
-    return fetch_cache(now)
+    try:
+        return fetch_cache(now)
+    except FileNotFoundError as exc:
+        # 還沒裝狀態列擷取（claude_hook），或裝了但還沒用過 Claude Code；卡片據此提示去設定裝
+        return ProviderState(NAME, [], None, ERROR, {"needs_hook": True},
+                             source="statusline-cache", error=str(exc))

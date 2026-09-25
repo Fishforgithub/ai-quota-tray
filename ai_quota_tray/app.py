@@ -26,7 +26,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from . import config, i18n, icon, startup, win32tray
+from . import config, demo, i18n, icon, startup, win32tray
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
@@ -90,9 +90,10 @@ class Poller(QObject):
 class TrayApp(QObject):
     copilot_ready = Signal()  # Copilot runtime 下載完成（背景執行緒 emit，排進主執行緒）
 
-    def __init__(self, enabled: set[str], language: str = i18n.AUTO):
+    def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False):
         super().__init__()
         self.language = language  # 設定值（auto／zh-TW／en）；實際語言在 i18n
+        self.demo = demo_mode  # 示範模式（demo.py）：只顯示範例資料，不查詢任何服務、不發通知
         self.states: dict[str, ProviderState] = {}
         self.alerts = AlertStore()
         self.tray = win32tray.TrayIcon(self._on_tray_event)
@@ -131,7 +132,7 @@ class TrayApp(QObject):
 
         self.tray.set_icon(icon.brand_png(self.icon_size), self.icon_size)
         self._poll_local()
-        if "copilot" in self.enabled:
+        if "copilot" in self.enabled and not self.demo:
             self._prepare_copilot()  # 新電腦上設定檔已勾 Copilot：先把 runtime 抓好
 
     @property
@@ -140,6 +141,8 @@ class TrayApp(QObject):
 
     def _poll_local(self) -> None:
         """背景定時：只讀本機檔案、不連網（低額度通知靠這個）。雲端來源只在打開卡片時查。"""
+        if self.demo:
+            return
         self.poller.refresh("claude")
         for name in BACKGROUND_LOCAL:
             self.poller.refresh(name, local=True)
@@ -150,12 +153,14 @@ class TrayApp(QObject):
     def _on_copilot_ready(self) -> None:
         """runtime 下好了：卡片開著、或卡片上還寫「正在下載」，就馬上查一次。"""
         state = self.states.get("copilot")
-        if "copilot" in self.enabled and (self.card.isVisible()
+        if "copilot" in self.enabled and not self.demo and (self.card.isVisible()
                                           or (state is not None and state.status == PREPARING)):
             self._last_remote_attempt["copilot"] = time.monotonic()
             self.poller.refresh("copilot")
 
     def refresh_all(self) -> None:
+        if self.demo:
+            return
         for name in ALL:
             if name in self.enabled:
                 if name in VIEW_REFRESH_INTERVAL_S:
@@ -177,6 +182,8 @@ class TrayApp(QObject):
             self._update_views()
 
     def _refresh_on_view(self) -> None:
+        if self.demo:
+            return
         self._mark_remote_stale()
         now = time.monotonic()
         for name, interval in VIEW_REFRESH_INTERVAL_S.items():
@@ -210,6 +217,8 @@ class TrayApp(QObject):
         self.states[state.name] = state
         log.info("%s: %s %s", state.name, state.status,
                  [(w.label, w.remaining_pct) for w in state.windows] or state.error)
+        if self.demo:
+            return  # 切到示範模式前送出的查詢晚到：留著給關掉示範模式時用，不顯示、不通知
         self._update_views()
         due = self.alerts.take_due([state], now)
         if due:
@@ -219,10 +228,15 @@ class TrayApp(QObject):
     def _update_views(self) -> None:
         self.tray.set_tooltip(icon.tooltip([s for _, s in self._card_states() if s is not None]))
         if self.card.isVisible():
-            self.card.set_states(self._card_states())
+            self.card.set_states(self._card_states(), self._banner())
 
     def _card_states(self) -> list[tuple[str, ProviderState | None]]:
+        if self.demo:
+            return demo.sample_states(utcnow())  # 四家全顯示，不管勾了哪幾家
         return [(name, self.states.get(name)) for name in ALL if name in self.enabled]
+
+    def _banner(self) -> str | None:
+        return tr("card.demo_banner") if self.demo else None
 
     # ---------- 卡片 ----------
 
@@ -230,7 +244,7 @@ class TrayApp(QObject):
         self._refresh_on_view()
         # 取不到圖示位置（例如收在關著的溢位區）就用事件給的錨點
         self._card_anchor = self.tray.icon_rect() or (x, y, x + 1, y + 1)
-        self.card.set_states(self._card_states())
+        self.card.set_states(self._card_states(), self._banner())
         self.card.show_at(self._card_anchor)
         self._outside_since = None
         self._hover_timer.start()
@@ -296,15 +310,21 @@ class TrayApp(QObject):
     def open_settings(self) -> None:
         """非模態，已經開著就拉到前面，不會開第二個。"""
         if self._settings is None or not self._settings.isVisible():
-            self._settings = SettingsDialog(self.enabled, self.language, self.apply_settings)
+            self._settings = SettingsDialog(self.enabled, self.language, self.apply_settings,
+                                            demo=self.demo)
             self._settings.show()
         self._settings.raise_()
         self._settings.activateWindow()
 
-    def apply_settings(self, enabled: set[str], language: str | None = None) -> None:
-        """新勾選的服務立即抓取；取消的從卡片移除；語言變更只重畫。"""
+    def apply_settings(self, enabled: set[str], language: str | None = None,
+                       demo_mode: bool | None = None) -> None:
+        """新勾選的服務立即抓取；取消的從卡片移除；語言變更只重畫。
+        關掉示範模式時，照常讀一次本機紀錄（卡片開著的話也查雲端）。"""
         enabled = enabled & ALL.keys()
         changed = enabled - self.enabled
+        leaving_demo = self.demo and demo_mode is False
+        if demo_mode is not None:
+            self.demo = demo_mode
         for name in self.enabled - enabled:
             self.states.pop(name, None)
             self._last_remote_attempt.pop(name, None)
@@ -313,9 +333,13 @@ class TrayApp(QObject):
         if language is not None:
             self.language = language
             log.info("介面語言：%s → %s", language, i18n.set_language(language))
-        config.save(enabled=self.enabled, language=self.language)
-        log.info("Enabled: %s", sorted(self.enabled))
+        config.save(enabled=self.enabled, language=self.language, demo=self.demo)
+        log.info("Enabled: %s%s", sorted(self.enabled), "（示範模式）" if self.demo else "")
         self._update_views()
+        if self.demo:
+            return
+        if leaving_demo:
+            self._poll_local()
         for name in changed:
             if name == "claude":
                 self.poller.refresh(name)
@@ -346,12 +370,13 @@ def run() -> int:
     enabled = config.load_enabled(set(ALL))
     language = config.load_language()
     i18n.set_language(language)
+    demo_mode = config.load_demo()
 
     win32tray.set_app_id(APP_USER_MODEL_ID)  # 工作列用我們的圖示，不歸到 pythonw.exe
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 沒有任何 Qt 視窗也要常駐
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))
-    tray_app = TrayApp(enabled, language)
+    tray_app = TrayApp(enabled, language, demo_mode)
     app.aboutToQuit.connect(tray_app.shutdown)
 
     # 讓主控台 Ctrl+C 能結束：Qt 迴圈裡 Python 收不到訊號，靠計時器讓直譯器定期醒來

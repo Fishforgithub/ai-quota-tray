@@ -81,6 +81,8 @@ def status_message(state: ProviderState) -> str:
         return tr("card.disabled")
     if state.status == PREPARING:
         return tr("card.preparing")
+    if state.status == ERROR and state.detail.get("needs_hook"):
+        return tr("card.claude_needs_hook")
     if state.status == ERROR:
         err = state.error or tr("card.unknown_error")
         return tr("card.error", err=err if len(err) <= ERROR_TEXT_MAX else err[:ERROR_TEXT_MAX] + "…")
@@ -139,7 +141,9 @@ class Card(QWidget):
 
     # ---------- 內容 ----------
 
-    def set_states(self, states: list[tuple[str, ProviderState | None]]) -> None:
+    def set_states(self, states: list[tuple[str, ProviderState | None]],
+                   banner: str | None = None) -> None:
+        """banner：卡片最上方的一行提示（示範模式用，標明這些不是真的數字）。"""
         now = utcnow()
         self._theme = t = _theme()
         if self._body is not None:
@@ -168,6 +172,13 @@ class Card(QWidget):
 
         right = Qt.AlignRight | Qt.AlignVCenter
         row = 0
+        if banner:
+            note = label(banner, t["warn"], bold=True, small=True)
+            note.setWordWrap(True)
+            grid.addWidget(note, row, 0, 1, 4)
+            row += 1
+            grid.setRowMinimumHeight(row, 4)
+            row += 1
         if not states:
             msg = label(tr("card.nothing_enabled"), t["dim"], small=True)
             msg.setWordWrap(True)

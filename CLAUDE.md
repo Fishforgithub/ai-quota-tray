@@ -47,6 +47,14 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - **P5（2026-09-25）加 Antigravity CLI、GitHub Copilot**，預設不啟用（細節見 §3）。Copilot 透過官方 Python SDK 的 `account.getQuota`，使用 Copilot CLI 登入；Antigravity 執行官方 `agy -p /usage --output-format json`，由 agy 自己處理登入。額度不是固定長度的視窗 → Copilot 用 `make_window(label=...)`；Antigravity 依 agy 的群組顯示。卡片：Copilot unlimited 顯示「無上限：…」；全部沒勾選時顯示「沒有啟用任何服務…」；Antigravity 未登入提示先用 agy 登入。
 - **介面中／英切換（2026-09-25，業主要求）**：`i18n.py` 集中所有畫面文字（`STRINGS = {key: (繁中, English)}`、`tr(key)`）。設定視窗左下角「語言」下拉：跟隨系統／繁體中文／English，存 `config.json` 的 `language`（`auto`／`zh-TW`／`en`，預設 auto：Windows 介面語言是中文 → 繁中，其他 → English）。在下拉切換會**整個設定視窗立刻換語言預覽**（`tr(key, lang)`，不動全域），按儲存才套用到選單、卡片、通知、tooltip；只換語言不重抓。⚠️ **視窗 label 在資料裡一律維持中文**（週／月／進階／補全…），只在顯示時 `i18n.window_label` 翻——通知去重鍵含 label，切語言不能讓同一週期再通知一次。provider 的錯誤細節（`state.error`）是除錯用、不翻。`i18n` 模組預設繁中、只有 `run()` 依設定切換，所以既有測試不受本機語言影響；改英文的測試要 `addCleanup(i18n.set_language, "zh-TW")`。QMessageBox 的是／否按鈕字自己給（打包版刪了 Qt 翻譯檔）。卡片進度條改成 60–110px 可縮（英文 “Completions” 會把第一欄撐寬，原本固定 110 會讓 % 壓到條上）。
 
+- **Claude 狀態列擷取安裝器（2026-09-26，`claude_hook.py`）**：Claude 的資料原本只靠業主自己寫的 Node hook（`D:\FISH\tools\claude-monitor\statusline-usage.js`），一般使用者沒有 → Store 版 Claude 會永遠沒資料。設定視窗 Claude 那列加「安裝／移除」按鈕，**按下立刻執行、先跳確認**（改的是 Claude Code 的 `~/.claude/settings.json`，不是我們的設定）。做法：
+  - hook 是 PowerShell 腳本 `~/.claude/ai-quota-tray/statusline.ps1`（不用 Node：官方安裝程式裝的 Claude Code 不一定有 Node），把 stdin 的 `rate_limits` 存成 `~/.claude/usage-cache.json`（跟 Node 版同格式），再**照常執行使用者原本的狀態列**、印出它的輸出。原本的 statusLine 存在 `original-statusline.json`（移除時原樣還原，padding／refreshInterval 等欄位保留），指令本身另存 `original.sh`／`original.ps1`：環境有 `MSYSTEM`（Claude Code 經 Git Bash 呼叫）就用 bash 跑 .sh，否則用 PowerShell 跑 .ps1——跟官方文件「有 Git Bash 用 Git Bash，沒有用 PowerShell」一致。
+  - 🔴 踩過的坑（都有測試）：①指令字串不能直接當參數丟給 bash，PowerShell 5.1 會吃掉參數裡的雙引號、反斜線路徑跟著被 bash 吃光 → 存成檔案讓 shell 自己讀；②PowerShell 5.1 轉手 stdin 給子程式會在開頭加 BOM，Node 的 `JSON.parse` 直接失敗 → `original.ps1` 自己讀 stdin、去 BOM、用無 BOM UTF-8 轉交；hook 本身也 `TrimStart(0xFEFF)`；③帶引號的路徑在 PowerShell 是字串不是指令 → 加 `&`；④💡 從 Git Bash 啟動的任何 Windows 程式都會被塞回 `MSYSTEM`（`env -u` 也沒用），要測「沒有 Git Bash」的路徑得從 PowerShell 起。
+  - 檔案放 `~/.claude/` 不放 App 目錄：MSIX 解除安裝不能跑清理程式，殘留的指令仍指向還在的腳本，使用者原本的狀態列照常運作。設定檔寫之前備份成 `settings.json.ai-quota-tray.bak`；讀不懂（例如有註解）就整個不動（`UNREADABLE`，按鈕隱藏）。業主自己的 Node hook 會被認成 `LEGACY`（已相容，按鈕隱藏）。
+  - 效能：PowerShell 5.1 空跑 `-File` 就要約 0.7 秒，hook 整體 1～2 秒（腳本本身只 0.24 秒，其餘是載入與 Defender 掃描），Node 版約 0.25 秒。官方文件說狀態列指令太慢會被新的更新取消；Claude Code 是變動停 300ms 後才跑、數字只在每次回應後變，判斷可接受。✅ 2026-09-26 業主同意後裝進業主真正的 `~/.claude/settings.json`（串接原本的 Node hook）實測：2 分鐘內 Claude Code 呼叫 8 次、每次約 0.15～1.6 秒（每 0.1 秒抽查的估計）、快取持續更新且 tray 讀得到、沒有殘留行程或暫存檔、其他 17 個設定欄位不變；業主決定保留新 hook。💡 業主這台現在是 `INSTALLED`（不再是 `LEGACY`），設定裡的按鈕會顯示「移除」。
+  - 卡片：沒有快取時 Claude 顯示「還沒有資料：到設定安裝 Claude 狀態列擷取，再用一下 Claude Code」（`detail.needs_hook`），不再是 `FileNotFoundError`。
+- **示範模式（2026-09-26，`demo.py`）**：給 Store 審核人員（他們的電腦沒有任何 CLI，正常模式只會看到一排「沒有資料」，容易被判 App 沒功能）。設定視窗左下「示範模式」勾選，存 `config.json` 的 `demo`（預設關）。開著時：不查詢任何服務、不下載 Copilot runtime、不發通知，四家一律顯示固定範例（涵蓋綠／黃／紅與「約」），卡片頂端紅字「示範模式・以下為範例資料，不是你的額度」；關掉時照常讀一次本機紀錄。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
@@ -56,6 +64,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 5. 名稱與圖示避開 Claude／Codex／Grok／Antigravity／Copilot 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名已是 AI Quota Tray。
 6. 簽章：Store 代簽；sideload 要 Azure Trusted Signing。
 7. 還沒實測、上線前要補：toast 畫面、睡眠喚醒重抓、真正寫入 `Run` 的開機啟動、多螢幕／工作列在其他邊／非 125% DPI 的卡片定位、真人點「設定…」時視窗是否在最前面。
+8. 送審的「認證注意事項」要寫：右鍵系統匣圖示 →「設定…」→ 勾「示範模式」→ 儲存，再 hover 圖示看卡片（審核人員沒有 Claude Code／Codex 等 CLI）。
 
 **歷史實測結果（本機帳號，2026-09-25；已移除的來源僅供格式參考）**
 

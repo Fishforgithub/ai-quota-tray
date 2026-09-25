@@ -1,14 +1,18 @@
-"""Service visibility and language settings."""
+"""設定視窗：服務啟用勾選、語言、示範模式，以及 Claude 狀態列擷取的安裝／移除。
+
+Claude 那一列右邊的按鈕會「立刻」安裝或移除 hook（claude_hook.py），不等按儲存：
+它改的是 Claude Code 的設定檔，不是我們的，按下去時先跳確認視窗說清楚會改什麼。
+"""
 from __future__ import annotations
 
 from typing import Callable
 
 from PySide6.QtCore import QRect, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QPixmap
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame,
-                               QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
+                               QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
-from . import i18n
+from . import claude_hook, i18n
 from .i18n import tr
 from .icon import ASSETS, BRAND_PNG
 from .model import DISPLAY_NAME
@@ -48,6 +52,7 @@ def _style(p: dict[str, str]) -> str:
         QPushButton {{ min-width: 88px; min-height: 30px; border-radius: 6px; padding: 0 14px;
                       color: {p['text']}; background: {p['button']}; border: 1px solid {p['line']}; }}
         QPushButton#cancel, QPushButton#save {{ min-width: 116px; min-height: 38px; }}
+        QPushButton#hookButton {{ min-width: 64px; padding: 0 10px; }}  /* 預設 88px 會把說明擠成兩行 */
         QPushButton#save {{ color: white; background: {p['accent']}; border: none; }}
         QPushButton#save:hover {{ background: {p['accent_hover']}; }}
         QFrame#promo {{ background: #1c2948; border: 1px solid #60729b; border-radius: 9px; }}
@@ -70,7 +75,7 @@ def _line() -> QFrame:
 
 class SettingsDialog(QDialog):
     def __init__(self, enabled: set[str], language: str,
-                 on_apply: Callable[[set[str], str], None]):
+                 on_apply: Callable[[set[str], str, bool], None], demo: bool = False):
         super().__init__(None, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setWindowIcon(QIcon(str(BRAND_PNG)))
         self.setStyleSheet(_style(_palette()))
@@ -78,7 +83,9 @@ class SettingsDialog(QDialog):
         self.setFixedSize(590, 653)
         self._initial_enabled = set(enabled)
         self._initial_language = language if language in i18n.LANGUAGES else i18n.AUTO
+        self._initial_demo = demo
         self._on_apply = on_apply
+        self._hook_status = claude_hook.status()
         self.checks: dict[str, QCheckBox] = {}
         self._texts: list[tuple[QLabel | QPushButton, str]] = []  # (元件, i18n key)
 
@@ -111,6 +118,10 @@ class SettingsDialog(QDialog):
         root.addSpacing(16)
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
+        # 給 Store 審核人員、或還沒裝任何 CLI 的人先看看長什麼樣子（demo.py）
+        self.demo_check = self._text(QCheckBox(), "settings.demo", "demoCheck")
+        self.demo_check.setChecked(demo)
+        buttons.addWidget(self.demo_check)
         buttons.addStretch(1)
         cancel = self._text(QPushButton(), "settings.cancel", "cancel")
         cancel.setFixedWidth(147)
@@ -164,9 +175,19 @@ class SettingsDialog(QDialog):
             check.setFixedWidth(125)
             self.checks[name] = check
             line.addWidget(check)
-            description = self._text(QLabel(), f"settings.source.{name}", "sourceDescription")
+            if name == "claude":  # 說明與按鈕依 hook 狀態變，在 _refresh_hook 填字
+                description = QLabel()
+                description.setObjectName("sourceDescription")
+                self.claude_desc = description
+            else:
+                description = self._text(QLabel(), f"settings.source.{name}", "sourceDescription")
             description.setWordWrap(True)
             line.addWidget(description, 1)
+            if name == "claude":
+                self.hook_button = QPushButton()
+                self.hook_button.setObjectName("hookButton")
+                self.hook_button.clicked.connect(self._on_hook_clicked)
+                line.addWidget(self.hook_button)
             rows.addWidget(row)
             if name != ORDER[-1]:
                 rows.addWidget(_line())
@@ -219,6 +240,45 @@ class SettingsDialog(QDialog):
         for widget, key in self._texts:
             widget.setText(tr(key, lang))
         self.language.setItemText(0, tr("settings.lang.auto", lang))
+        self._refresh_hook()
+
+    # ---------- Claude 狀態列擷取 ----------
+
+    def _refresh_hook(self) -> None:
+        lang = self.preview_language()
+        self.claude_desc.setText(tr(f"settings.hook.{self._hook_status}", lang))
+        actions = {claude_hook.NOT_INSTALLED: "settings.hook.install",
+                   claude_hook.INSTALLED: "settings.hook.remove"}
+        key = actions.get(self._hook_status)
+        self.hook_button.setVisible(key is not None)  # 沒裝 Claude Code、舊版 hook、讀不懂：不給按
+        if key:
+            self.hook_button.setText(tr(key, lang))
+
+    def confirm(self, text: str) -> bool:
+        lang = self.preview_language()
+        box = QMessageBox(QMessageBox.Question, "AI Quota Tray", text,
+                          QMessageBox.Yes | QMessageBox.No, self)
+        # 打包版刪了 Qt 的翻譯檔，按鈕字自己給
+        box.button(QMessageBox.Yes).setText(tr("settings.yes", lang))
+        box.button(QMessageBox.No).setText(tr("settings.no", lang))
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
+
+    def _on_hook_clicked(self) -> None:
+        lang = self.preview_language()
+        installing = self._hook_status == claude_hook.NOT_INSTALLED
+        text = tr("settings.hook.confirm_install" if installing else "settings.hook.confirm_remove",
+                  lang, path=claude_hook.settings_path())
+        if not self.confirm(text):
+            return
+        try:
+            claude_hook.install() if installing else claude_hook.uninstall()
+        except (claude_hook.HookError, OSError) as exc:
+            QMessageBox.warning(self, "AI Quota Tray", tr("settings.hook.failed", lang, err=exc))
+        self._hook_status = claude_hook.status()
+        self._refresh_hook()
+
+    # ---------- 服務與儲存 ----------
 
     def select(self, enabled: set[str]) -> None:
         for name, check in self.checks.items():
@@ -229,6 +289,8 @@ class SettingsDialog(QDialog):
 
     def accept(self) -> None:
         enabled, language = self.selected_enabled(), self.selected_language()
-        if enabled != self._initial_enabled or language != self._initial_language:
-            self._on_apply(enabled, language)
+        demo = self.demo_check.isChecked()
+        if (enabled != self._initial_enabled or language != self._initial_language
+                or demo != self._initial_demo):
+            self._on_apply(enabled, language, demo)
         super().accept()

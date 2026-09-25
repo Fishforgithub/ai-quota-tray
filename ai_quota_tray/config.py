@@ -53,13 +53,18 @@ def load_language(path: Path | None = None) -> str:
     return value if value in LANGUAGES else AUTO
 
 
-def save(path: Path | None = None, **fields: set[str] | str) -> None:
+def load_demo(path: Path | None = None) -> bool:
+    """示範模式（demo.py）：顯示範例資料、不查詢任何服務。給 Store 審核人員用，預設關。"""
+    return (_load(path or config_path()) or {}).get("demo") is True
+
+
+def save(path: Path | None = None, **fields: set[str] | str | bool) -> None:
     """更新指定欄位，保留其他欄位；壞檔直接覆寫。例：save(enabled=..., language="en")。"""
     path = path or config_path()
     data = _load(path) or {}
     data.pop("token_sources", None)  # Drop obsolete source setting.
     for key, value in fields.items():
-        data[key] = value if isinstance(value, str) else sorted(value)
+        data[key] = value if isinstance(value, (str, bool)) else sorted(value)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
