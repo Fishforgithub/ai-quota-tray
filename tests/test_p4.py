@@ -128,17 +128,18 @@ class ConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sub" / "config.json"
             known = {"claude", "codex", "grok"}
-            self.assertEqual(config.load_token_sources(known, path), set())  # 沒檔案＝全部不用
+            self.assertEqual(config.load_token_sources(known, path), {"grok"})  # 沒檔案＝預設
             path.parent.mkdir()
-            path.write_text('{"other": 1, "token_sources": ["grok", "bogus"]}', encoding="utf-8")
-            self.assertEqual(config.load_token_sources(known, path), {"grok"})
-            config.save_token_sources({"codex", "grok"}, path)
+            path.write_text('{"other": 1, "token_sources": ["codex", "bogus"]}', encoding="utf-8")
+            # grok 沒有本機紀錄，就算設定檔沒寫也一定用 API
             self.assertEqual(config.load_token_sources(known, path), {"codex", "grok"})
+            config.save_token_sources({"claude", "grok"}, path)
+            self.assertEqual(config.load_token_sources(known, path), {"claude", "grok"})
             self.assertIn('"other": 1', path.read_text(encoding="utf-8"))
             path.write_text("{broken", encoding="utf-8")
-            self.assertEqual(config.load_token_sources(known, path), set())
-            config.save_token_sources({"grok"}, path)  # 壞檔直接覆寫
             self.assertEqual(config.load_token_sources(known, path), {"grok"})
+            config.save_token_sources({"codex", "grok"}, path)  # 壞檔直接覆寫
+            self.assertEqual(config.load_token_sources(known, path), {"codex", "grok"})
 
 
 class MenuTest(unittest.TestCase):
@@ -176,13 +177,9 @@ class MenuTest(unittest.TestCase):
     def labels(self):
         return [(text, checked) for mid, text, _, checked in self.tray_app.menu_items() if mid]
 
-    def test_menu_has_required_items(self):
-        labels = self.labels()
-        texts = [t for t, _ in labels]
-        for required in ("立即刷新", "開機時啟動", "關閉"):
-            self.assertIn(required, texts)
-        self.assertIn(("Grok 使用 API（必要）", True), labels)
-        self.assertIn(("Codex 使用 API（較即時）", False), labels)
+    def test_menu_is_clean(self):
+        # 業主要求：右鍵選單保持乾淨，資料來源放到「設定…」
+        self.assertEqual([t for t, _ in self.labels()], ["立即刷新", "設定…", "開機時啟動", "關閉"])
 
     def test_right_click_opens_menu_and_runs_choice(self):
         tray = self.tray_app.tray
@@ -192,24 +189,19 @@ class MenuTest(unittest.TestCase):
         tray.show_menu.assert_called_once()
         self.assertEqual(self.app_mod.Poller.refresh.call_count, 3)
 
-    def test_toggle_token_saves_config_and_refetches(self):
+    def test_settings_opens_once_and_applies(self):
+        self.tray_app.handle_menu(self.app_mod.MENU_SETTINGS)
+        dlg = self.tray_app._settings
+        self.assertTrue(dlg.isVisible())
+        self.tray_app.handle_menu(self.app_mod.MENU_SETTINGS)
+        self.assertIs(self.tray_app._settings, dlg)  # 不會開第二個
         self.app_mod.Poller.refresh.reset_mock()
-        self.tray_app.handle_menu(11)  # Codex
+        dlg.groups["codex"].button(1).setChecked(True)  # Codex → API
+        dlg.accept()
+        self.assertFalse(dlg.isVisible())
         self.assertEqual(self.tray_app.token_set, {"codex", "grok"})
         self.assertEqual(config.load_token_sources({"codex", "grok", "claude"}, self.cfg), {"codex", "grok"})
-        self.app_mod.Poller.refresh.assert_called_once_with("codex")
-        self.tray_app.handle_menu(12)  # Grok 關掉
-        self.assertEqual(self.tray_app.token_set, {"codex"})
-
-    def test_claude_requires_confirmation(self):
-        with mock.patch.object(self.tray_app, "confirm_claude_token", return_value=False):
-            self.tray_app.handle_menu(13)
-        self.assertNotIn("claude", self.tray_app.token_set)
-        with mock.patch.object(self.tray_app, "confirm_claude_token", return_value=True):
-            self.tray_app.handle_menu(13)
-        self.assertIn("claude", self.tray_app.token_set)
-        self.tray_app.handle_menu(13)  # 關掉不用再確認
-        self.assertNotIn("claude", self.tray_app.token_set)
+        self.app_mod.Poller.refresh.assert_called_once_with("codex")  # 只重抓有變的那家
 
     def test_startup_and_quit(self):
         self.tray_app.handle_menu(self.app_mod.MENU_STARTUP)
@@ -227,6 +219,63 @@ class MenuTest(unittest.TestCase):
         self.tray_app._on_fetched(ProviderState("grok", [make_window(92, WEEK_END, 604800)], NOW, OK))
         tray.set_icon.assert_not_called()
         self.assertIn("grok 週 8%", tray.set_tooltip.call_args.args[0])
+
+
+class SettingsDialogTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.qapp = QApplication.instance() or QApplication([])
+
+    def make(self, sources):
+        from ai_quota_tray.settings import SettingsDialog
+        applied = []
+        dlg = SettingsDialog(sources, applied.append)
+        self.addCleanup(dlg.deleteLater)
+        return dlg, applied
+
+    def test_reflects_current_and_grok_local_is_disabled(self):
+        from ai_quota_tray.settings import API, LOCAL
+        dlg, _ = self.make({"grok"})
+        self.assertEqual(dlg.groups["claude"].checkedId(), LOCAL)
+        self.assertEqual(dlg.groups["codex"].checkedId(), LOCAL)
+        self.assertEqual(dlg.groups["grok"].checkedId(), API)
+        self.assertFalse(dlg.groups["grok"].button(LOCAL).isEnabled())
+
+    def test_texts_explain_default_and_risk(self):
+        from PySide6.QtWidgets import QGroupBox, QLabel
+        dlg, _ = self.make({"grok"})
+        titles = [b.title() for b in dlg.findChildren(QGroupBox)]
+        self.assertIn("Claude　（預設：本機紀錄）", titles)
+        self.assertIn("Grok　（預設：API）", titles)
+        text = " ".join(lbl.text() for lbl in dlg.findChildren(QLabel))
+        self.assertIn("違反使用條款", text)
+        self.assertIn("不碰你的登入憑證", text)
+
+    def test_claude_api_needs_confirmation(self):
+        from ai_quota_tray.settings import API, LOCAL
+        dlg, applied = self.make({"grok"})
+        dlg.groups["claude"].button(API).setChecked(True)
+        with mock.patch.object(dlg, "confirm_claude", return_value=False):
+            dlg.accept()
+        self.assertEqual(applied, [])  # 沒套用
+        self.assertEqual(dlg.groups["claude"].checkedId(), LOCAL)  # 退回本機紀錄
+        dlg.groups["claude"].button(API).setChecked(True)
+        with mock.patch.object(dlg, "confirm_claude", return_value=True):
+            dlg.accept()
+        self.assertEqual(applied, [{"claude", "grok"}])
+
+    def test_reset_to_default_and_no_change_no_apply(self):
+        from PySide6.QtWidgets import QPushButton
+
+        from ai_quota_tray.settings import LOCAL
+        dlg, _ = self.make({"codex", "grok"})
+        [b for b in dlg.findChildren(QPushButton) if b.text() == "還原預設"][0].click()
+        self.assertEqual(dlg.groups["codex"].checkedId(), LOCAL)
+        self.assertEqual(dlg.selected(), {"grok"})
+        dlg2, applied2 = self.make({"grok"})
+        dlg2.accept()
+        self.assertEqual(applied2, [])  # 沒改就不套用、不重抓
 
 
 if __name__ == "__main__":

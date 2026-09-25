@@ -6,7 +6,8 @@
 - 睡眠喚醒後等 RESUME_DELAY_S 秒（網路通常還沒好）全部重抓。
 
 P4：抓取失敗時保留上一次的數字（model.carry_over）；剩餘 < 10% 跳通知（alerts.py，
-每個重置週期只一次）；右鍵選單切換各家 token 來源（config.py）與開機啟動（startup.py）。
+每個重置週期只一次）；右鍵選單：立即刷新／設定…（各家資料來源，settings.py）／
+開機時啟動（startup.py）／關閉。
 
 卡片開關：NIN_POPUPOPEN（hover）或點一下圖示 → 開；之後每 HOVER_CHECK_MS 看一次滑鼠，
 離開「圖示＋卡片」超過 HIDE_DELAY_S 才關。不直接靠 NIN_POPUPCLOSE 關，
@@ -22,13 +23,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from . import config, icon, startup, win32tray
 from .alerts import AlertStore
 from .card import Card
 from .model import ProviderState, carry_over, utcnow
 from .providers import ALL, fetch_one
+from .settings import SettingsDialog
 
 log = logging.getLogger(__name__)
 
@@ -39,19 +41,7 @@ HIDE_DELAY_S = 0.4
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
 
-MENU_REFRESH, MENU_QUIT, MENU_STARTUP = 1, 2, 3
-# 「使用 API」選項：選單 id → provider
-MENU_TOKEN = {11: "codex", 12: "grok", 13: "claude"}
-TOKEN_LABEL = {
-    "codex": "Codex 使用 API（較即時）",
-    "grok": "Grok 使用 API（必要）",
-    "claude": "Claude 使用 API（⚠️ 違反使用條款風險）",
-}
-CLAUDE_WARNING = (
-    "Anthropic 自 2026-02 起明文規定：Free／Pro／Max 的 OAuth token 用在 Claude Code、"
-    "claude.ai 以外的任何工具都違反 Consumer ToS，而且曾經技術封鎖過。\n\n"
-    "不開也能用：Claude 的數字會從 Claude Code 的 statusLine 取得。\n\n確定要開啟嗎？"
-)
+MENU_REFRESH, MENU_QUIT, MENU_STARTUP, MENU_SETTINGS = 1, 2, 3, 4
 
 
 class Poller(QObject):
@@ -101,6 +91,7 @@ class TrayApp(QObject):
             self._timers.append(timer)
 
         self.card = Card()
+        self._settings: SettingsDialog | None = None
         self._card_anchor: tuple[int, int, int, int] | None = None
         self._outside_since: float | None = None
         self._hover_timer = QTimer(self)
@@ -184,9 +175,8 @@ class TrayApp(QObject):
 
     def menu_items(self) -> list[win32tray.MenuItem]:
         sep = (None, "", True, False)
-        tokens = [(mid, TOKEN_LABEL[name], True, name in self.token_set)
-                  for mid, name in MENU_TOKEN.items()]
-        return [(MENU_REFRESH, "立即刷新", True, False), sep, *tokens, sep,
+        return [(MENU_REFRESH, "立即刷新", True, False),
+                (MENU_SETTINGS, "設定…", True, False), sep,
                 (MENU_STARTUP, "開機時啟動", True, startup.is_enabled()), sep,
                 (MENU_QUIT, "關閉", True, False)]
 
@@ -196,8 +186,8 @@ class TrayApp(QObject):
     def handle_menu(self, cmd: int | None) -> None:
         if cmd == MENU_REFRESH:
             self.refresh_all()
-        elif cmd in MENU_TOKEN:
-            self.toggle_token(MENU_TOKEN[cmd])
+        elif cmd == MENU_SETTINGS:
+            self.open_settings()
         elif cmd == MENU_STARTUP:
             if startup.is_enabled():
                 startup.disable()
@@ -207,25 +197,31 @@ class TrayApp(QObject):
         elif cmd == MENU_QUIT:
             QApplication.quit()
 
-    def toggle_token(self, name: str) -> None:
-        enabling = name not in self.token_set
-        if enabling and name == "claude" and not self.confirm_claude_token():
-            return
-        self.token_set.symmetric_difference_update({name})
-        config.save_token_sources(self.token_set)
-        log.info("token 來源：%s", sorted(self.token_set) or "（全部不用）")
-        self.poller.refresh(name)
+    # ---------- 設定 ----------
 
-    def confirm_claude_token(self) -> bool:
-        box = QMessageBox(QMessageBox.Warning, "AI Quota Tray", CLAUDE_WARNING,
-                          QMessageBox.Yes | QMessageBox.No)
-        box.setDefaultButton(QMessageBox.No)
-        return box.exec() == QMessageBox.Yes
+    def open_settings(self) -> None:
+        """非模態，已經開著就拉到前面，不會開第二個。"""
+        if self._settings is None or not self._settings.isVisible():
+            self._settings = SettingsDialog(self.token_set, self.apply_token_sources)
+            self._settings.show()
+        self._settings.raise_()
+        self._settings.activateWindow()
+
+    def apply_token_sources(self, sources: set[str]) -> None:
+        changed = sources ^ self.token_set
+        self.token_set.clear()
+        self.token_set.update(sources)
+        config.save_token_sources(self.token_set)
+        log.info("使用 API：%s", sorted(self.token_set) or "（全部讀本機紀錄）")
+        for name in changed:
+            self.poller.refresh(name)
 
     def shutdown(self) -> None:
         for timer in self._timers + [self._hover_timer, self._resume_timer]:
             timer.stop()
         self.poller.shutdown()
+        if self._settings is not None:
+            self._settings.close()
         self.card.close()
         self.tray.close()
 

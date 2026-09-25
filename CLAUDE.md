@@ -32,12 +32,13 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - **P4**：
   - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後全部重抓。
   - 通知（`alerts.py`）：剩餘 < 10%（＝卡片進度條變紅）時用 `NIF_INFO` 發 toast（`NIIF_RESPECT_QUIET_TIME`），點通知開卡片。**每個視窗每個重置週期只一次**：鍵＝`provider|label|resets_at`，記在 `%LOCALAPPDATA%\ai-quota-tray\state.json`（重開不重複；重置時間過了自動清掉；壞檔直接覆寫）。只看 `ok`/`stale`，失敗後保留的舊數字不發。
-  - 右鍵選單：立即刷新／Codex、Grok、Claude 各自「使用 API」（打勾＝用 token 來源）／開機時啟動／關閉。token 來源存在 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `token_sources`（`config.py`，預設全部不用），切換後立即重抓該家；開 Claude 會先跳 ToS 警告對話框、預設按鈕是「否」。命令列 `--token` 只是把值寫進 config（給第一次設定用）。
+  - 右鍵選單（業主要求保持乾淨）：立即刷新／設定…／開機時啟動／關閉。
+  - 設定視窗（`settings.py`，非模態、只開一個）：每家二選一「本機紀錄」或「API」，每個選項下寫說明與風險，框標題寫預設值；Grok 的本機紀錄停用（`config.HAS_LOCAL_SOURCE`）。預設 `config.DEFAULT_TOKEN_SOURCES`＝只有 Grok 用 API（Claude、Codex 讀本機紀錄）；「還原預設」按鈕。改選 Claude API 按確定時跳 ToS 確認（預設「否」，選否會退回本機紀錄並留在視窗）。沒改就不套用；有改只重抓有變的那幾家。存在 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `token_sources`（沒有本機紀錄的 provider 讀取時一律補進去）。命令列 `--token` 只是把值寫進 config（給第一次設定用）。
   - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入的是**目前這份的啟動方式**（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），**刻意不帶 `--token`**（帶了每次開機都會蓋掉選單的選擇），也不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
   - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（token 來源照 config.json）。
-  - 已驗證：unittest 51 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
+  - 已驗證：unittest 54 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`；`SettingsDialogTest`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；實際從右鍵開設定視窗截圖看過；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
   - 🔴 教訓（2026-09-25）：P4 用「字串替換」插入 `_context_menu` 時比對到**第一個** `def shutdown`（`Poller` 的），方法進了錯的類別 → 右鍵一按 `AttributeError`（被 `_proc` 吞掉只寫 log，畫面上就是「右鍵沒反應」），當時的測試都沒走到選單。改 `app.py` 要用能看到上下文的編輯方式，選單相關改動要跑 `MenuTest`。
-- 狀態值比 §2 多一個 `disabled`（來源沒啟用，例如 Grok 沒給 `--token`）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
+- 狀態值比 §2 多一個 `disabled`（來源沒啟用；probe 沒給 `--token grok` 時會出現，系統匣程式裡 Grok 一律用 API 所以不會）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 
 **實測結果（本機帳號，2026-09-25）**

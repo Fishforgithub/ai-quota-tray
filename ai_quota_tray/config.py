@@ -1,7 +1,9 @@
 """使用者設定：%LOCALAPPDATA%\\ai-quota-tray\\config.json。
 
-目前只有一項：哪幾家改用 token 來源（右鍵選單切換）。
-預設全部不用 token（CLAUDE.md §1 原則 5：上線版不碰 token，要使用者自己打開）。
+目前只有一項：哪幾家用 API（token 來源），其餘讀本機紀錄。在「設定」視窗切換（settings.py）。
+
+預設：Claude、Codex 讀本機紀錄（不碰 token）；Grok 沒有本機紀錄，只能用 API。
+⚠️ 上線版（CLAUDE.md §5）不能碰 token → 到時 Grok 要整個拿掉或預設關閉。
 """
 from __future__ import annotations
 
@@ -11,6 +13,14 @@ import os
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+# 有沒有不碰 token 的本機紀錄可讀。沒有的一律用 API（設定視窗裡「本機紀錄」是停用的）
+HAS_LOCAL_SOURCE = {"claude": True, "codex": True, "grok": False}
+DEFAULT_TOKEN_SOURCES = frozenset({"grok"})
+
+
+def _forced(known: set[str]) -> set[str]:
+    return {name for name in known if not HAS_LOCAL_SOURCE.get(name, True)}
 
 
 def data_dir() -> Path:
@@ -24,18 +34,20 @@ def config_path() -> Path:
 
 
 def load_token_sources(known: set[str], path: Path | None = None) -> set[str]:
+    """回傳要用 API 的 provider。沒有設定檔或讀不懂 → 預設值。沒有本機紀錄的一定在裡面。"""
     path = path or config_path()
+    default = set(DEFAULT_TOKEN_SOURCES & known)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return set()
+        return default | _forced(known)
     except (OSError, ValueError) as exc:
-        log.warning("讀不到 %s：%s（當作全部不用 token）", path, exc)
-        return set()
+        log.warning("讀不到 %s：%s（改用預設）", path, exc)
+        return default | _forced(known)
     sources = data.get("token_sources") if isinstance(data, dict) else None
     if not isinstance(sources, list):
-        return set()
-    return {s for s in sources if s in known}  # 不認得的名字直接忽略
+        return default | _forced(known)
+    return {s for s in sources if s in known} | _forced(known)  # 不認得的名字直接忽略
 
 
 def save_token_sources(sources: set[str], path: Path | None = None) -> None:
