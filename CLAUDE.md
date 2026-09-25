@@ -7,7 +7,7 @@ Windows 系統匣常駐工具：顯示 Claude / Codex / Grok 各視窗的剩餘 
 
 ## 0. 目前進度與怎麼跑（2026-09-25）
 
-**P1、P2 完成**，P3 未開始。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
+**P1、P2、P3 完成**，P4 未開始。repo：`github.com/Fishforgithub/ai-quota-tray`（⚠️ **PUBLIC**，測試夾具不准放真實 id／姓名／email；無 CI，push ≠ 上線）。
 
 ```
 python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + Pillow
@@ -18,13 +18,15 @@ python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + 
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
 
-- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`net.py`（urllib GET，401 或非 HTML 的 403 → `AuthExpired`）、`providers/{claude,codex,grok}.py`（各自 `fetch(use_token, now)`；`providers.fetch_one` 把例外收斂成該家 `error`）、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`app.py`。
+- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`net.py`（urllib GET，401 或非 HTML 的 403 → `AuthExpired`）、`providers/{claude,codex,grok}.py`（各自 `fetch(use_token, now)`；`providers.fetch_one` 把例外收斂成該家 `error`）、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`（卡片定位純計算）、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
 - probe **只用標準函式庫**；`requires-python >= 3.11`。
 - **P2 與 §4 的差異**：系統匣走 **ctypes** 而不是 pywin32（pywin32 沒包 `Shell_NotifyIconGetRect`，VERSION_4 的 union 也難填）。右鍵選單用原生 `TrackPopupMenu`（先 `SetForegroundWindow`，否則點外面不會關）。收回呼訊息的是隱藏的**頂層**視窗、不是 message-only（`TaskbarCreated` 只廣播給頂層視窗，Explorer 重啟會自動重新登錄圖示）。對該視窗送 `WM_CLOSE` ＝ 正常結束（會 `NIM_DELETE`，不留殘影）。單一實例用具名 mutex `Local\AiQuotaTray.SingleInstance`。
 - 圖示：所有視窗最低剩餘 %，無條件捨去；< 10 紅、< 30 黃、其餘綠；沒資料灰「–」、全部壞掉灰「!」。szTip 有填（給螢幕閱讀器），但不設 `NIF_SHOWTIP`，所以不會跳原生 tooltip。
-- ⚠️ **Windows 11 預設把新圖示收進溢位區（`^`）**，此時 `Shell_NotifyIconGetRect` 回的是 `^` 箭頭的位置（2026-09-25 實測）→ P3 定位卡片要考慮這種情況。使用者要自己在「設定 → 個人化 → 工作列 → 其他系統匣圖示」打開。
+- ⚠️ **Windows 11 預設把新圖示收進溢位區（`^`）**，此時 `Shell_NotifyIconGetRect` 回的是 `^` 箭頭的位置（2026-09-25 實測），卡片就會出現在 `^` 上方。使用者要自己在「設定 → 個人化 → 工作列 → 其他系統匣圖示」打開。
 - ⚠️ DPI：Qt 6 預設 Per-Monitor v2，系統匣回呼座標、`GetRect` 都是實體像素；**外部測試腳本沒設 DPI aware 的話拿到的是虛擬化座標**（125% 時差 1.25 倍）。
-- 已驗證：啟動→三家抓取→圖示登錄、右鍵選單「立即刷新」會重抓、`WM_CLOSE` 正常退出（exit 0、視窗銷毀）。**hover（`NIN_POPUPOPEN`/`CLOSE`）未實測**（要真的移動滑鼠；`--debug` 會印出 `tray event popup_open`）。
+- 已驗證（P2）：啟動→三家抓取→圖示登錄、右鍵選單「立即刷新」會重抓、`WM_CLOSE` 正常退出（exit 0、視窗銷毀）。
+- **P3 卡片**：`NIN_POPUPOPEN` 或點一下圖示（`NIN_SELECT`）→ 開；**關閉不靠 `NIN_POPUPCLOSE`**（滑鼠從圖示移到卡片途中就會收到 CLOSE），改成每 150ms 看滑鼠，離開「圖示矩形＋卡片（外擴 6px）」超過 0.4 秒才關。位置：`Shell_NotifyIconGetRect`（實體像素）→ 換算成該螢幕的邏輯像素 → 依圖示落在可用區域哪一側判斷工作列方向（上下左右／inside＝溢位面板或自動隱藏）→ 貼著圖示朝內、夾在可用區域內。取不到圖示位置時用事件的錨點座標。深淺色跟系統（`styleHints().colorScheme()`）。進度條＝剩餘、顏色門檻與圖示共用（`icon.level_for`）；stale 區塊整塊變灰、右上顯示「n 分鐘前」；檔案來源已歸零的視窗倒數顯示「已重置」；右上平常顯示方案（`team`、`GrokPro`）；API 失敗退回本機資料時顯示警示。
+- 已驗證（P3）：實際送 `NIN_POPUPOPEN` → 卡片出現在 `^` 上方、貼齊工作列（截圖看過），滑鼠不在上面 1.4 秒後確認已關閉；也收到過使用者真實 hover 的 `popup_open`/`popup_close`。**多螢幕、工作列在其他邊、非 125% DPI 只有單元測試，沒實機測**。
 - 狀態值比 §2 多一個 `disabled`（來源沒啟用，例如 Grok 沒給 `--token`）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 

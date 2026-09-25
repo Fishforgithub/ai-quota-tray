@@ -42,9 +42,13 @@ def summarize(states: list[ProviderState]) -> IconSpec:
         broken = any(s.status in (ERROR, AUTH_EXPIRED) for s in states)
         return IconSpec("!" if broken else "–", "grey", None, None)
     remaining, source = lowest
-    level = "red" if remaining < RED_BELOW else "yellow" if remaining < YELLOW_BELOW else "green"
     # 無條件捨去：剩 9.6% 顯示 9 而不是 10，避免看起來比實際寬裕
-    return IconSpec(str(int(remaining)), level, remaining, source)
+    return IconSpec(str(int(remaining)), level_for(remaining), remaining, source)
+
+
+def level_for(remaining: float) -> str:
+    """剩餘 % → 顏色等級。圖示與卡片進度條共用。"""
+    return "red" if remaining < RED_BELOW else "yellow" if remaining < YELLOW_BELOW else "green"
 
 
 def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:

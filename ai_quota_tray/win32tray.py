@@ -94,6 +94,7 @@ _sig(user32.DestroyMenu, w.BOOL, w.HMENU)
 _sig(user32.SetForegroundWindow, w.BOOL, w.HWND)
 _sig(user32.PostMessageW, w.BOOL, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
 _sig(user32.GetCursorPos, w.BOOL, ctypes.POINTER(w.POINT))
+_sig(user32.GetWindowRect, w.BOOL, w.HWND, ctypes.POINTER(w.RECT))
 _sig(user32.GetDpiForSystem, w.UINT)
 _sig(user32.GetSystemMetricsForDpi, ctypes.c_int, ctypes.c_int, w.UINT)
 _sig(shell32.Shell_NotifyIconW, w.BOOL, w.DWORD, ctypes.POINTER(NOTIFYICONDATAW))
@@ -106,6 +107,20 @@ _sig(kernel32.CreateMutexW, w.HANDLE, w.LPVOID, w.BOOL, w.LPCWSTR)
 def _signed_word(value: int) -> int:
     value &= 0xFFFF
     return value - 0x10000 if value & 0x8000 else value
+
+
+def cursor_pos() -> tuple[int, int]:
+    """滑鼠位置（實體像素）。"""
+    pt = w.POINT()
+    user32.GetCursorPos(ctypes.byref(pt))
+    return pt.x, pt.y
+
+
+def window_rect(hwnd: int) -> tuple[int, int, int, int]:
+    """視窗在螢幕上的矩形（實體像素）。"""
+    rect = w.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    return rect.left, rect.top, rect.right, rect.bottom
 
 
 def small_icon_size() -> int:
@@ -206,9 +221,7 @@ class TrayIcon:
     def show_menu(self, items: list[MenuItem], x: int | None = None, y: int | None = None) -> int | None:
         """原生選單，回傳被點的 id（沒點回 None）。"""
         if x is None or y is None:
-            pt = w.POINT()
-            user32.GetCursorPos(ctypes.byref(pt))
-            x, y = pt.x, pt.y
+            x, y = cursor_pos()
         menu = user32.CreatePopupMenu()
         try:
             for item_id, text, enabled in items:

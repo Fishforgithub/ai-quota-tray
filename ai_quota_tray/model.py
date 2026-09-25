@@ -168,6 +168,32 @@ def apply_file_freshness(state: ProviderState, now: datetime) -> ProviderState:
     return state
 
 
+# ---------- 顯示格式（CLAUDE.md §4） ----------
+
+def format_countdown(target: datetime | None, now: datetime) -> str:
+    """< 24h → hh:mm；≥ 24h → 3d04h。已過時間顯示 00:00（等下一輪抓取更新）。"""
+    if target is None:
+        return "—"
+    s = max(0, int((target - now).total_seconds()))
+    if s < _DAY:
+        return f"{s // 3600:02d}:{s % 3600 // 60:02d}"
+    days, rest = divmod(s, _DAY)
+    return f"{days}d{rest // 3600:02d}h"
+
+
+def format_age(fetched_at: datetime | None, now: datetime) -> str:
+    if fetched_at is None:
+        return "時間不明"
+    s = max(0, int((now - fetched_at).total_seconds()))
+    if s < 60:
+        return "剛剛"
+    if s < 3600:
+        return f"{s // 60} 分鐘前"
+    if s < _DAY:
+        return f"{s // 3600} 小時前"
+    return f"{s // _DAY} 天前"
+
+
 # ---------- 數值 ----------
 
 def to_float(value: Any) -> float | None:
