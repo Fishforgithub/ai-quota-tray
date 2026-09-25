@@ -43,6 +43,16 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 狀態值比 §2 多一個 `disabled`（來源沒啟用；probe 沒給 `--token grok` 時會出現，系統匣程式裡 Grok 一律用 API 所以不會）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 
+**下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
+
+1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
+2. 上線版**不能碰 token**（§1 原則 5、§5 政策）：設定視窗的 API 選項要拿掉或整個隱藏；Grok 沒有不碰 token 的來源 → 第一版不支援 Grok（或維持選配＋告知風險，要業主決定）。
+3. 開機啟動改 manifest `windows.startupTask`（HKCU `Run` 在 MSIX 無效），`startup.py` 要分 frozen/MSIX 兩條路。
+4. 驗證 `%LOCALAPPDATA%` 重導後 `config.json`／`state.json` 的實際落點，以及讀 `%USERPROFILE%\.claude`、`.codex` 在套件內是否正常。
+5. 名稱與圖示避開 Claude／Codex／Grok 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名已是 AI Quota Tray。
+6. 簽章：Store 代簽；sideload 要 Azure Trusted Signing。
+7. 還沒實測、上線前要補：toast 畫面、睡眠喚醒重抓、真正寫入 `Run` 的開機啟動、多螢幕／工作列在其他邊／非 125% DPI 的卡片定位、真人點「設定…」時視窗是否在最前面。
+
 **實測結果（本機帳號，2026-09-25）**
 
 | Provider | 來源 | 實際視窗 |
