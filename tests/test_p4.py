@@ -218,10 +218,15 @@ class MenuTest(unittest.TestCase):
             self.tray_app.handle_menu(self.app_mod.MENU_QUIT)
         quit_.assert_called_once()
 
-    def test_loading_shows_brand_icon(self):
+    def test_tray_always_shows_brand_icon(self):
+        # 業主決定：系統匣一律品牌圖示，資料進來只更新 tooltip，不換圖
         from ai_quota_tray import icon
-        png = self.tray_app.tray.set_icon.call_args_list[0].args[0]
-        self.assertEqual(png, icon.brand_png(16))
+        tray = self.tray_app.tray
+        self.assertEqual(tray.set_icon.call_args_list[0].args[0], icon.brand_png(16))
+        tray.set_icon.reset_mock()
+        self.tray_app._on_fetched(ProviderState("grok", [make_window(92, WEEK_END, 604800)], NOW, OK))
+        tray.set_icon.assert_not_called()
+        self.assertIn("grok 週 8%", tray.set_tooltip.call_args.args[0])
 
 
 if __name__ == "__main__":

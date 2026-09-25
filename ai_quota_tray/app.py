@@ -2,8 +2,7 @@
 
 抓取頻率與畫面更新分離（原則 2）：
 - 每家各自一個 QTimer 依 POLL_INTERVAL_S 抓；抓取在背景執行緒，結果用 signal 丟回主執行緒。
-- 圖示每 ICON_REFRESH_S 秒依已有資料重畫一次，抓到新資料時也立即重畫。
-- 卡片開著時自己每秒重算倒數（card.py）。
+- 系統匣一律顯示品牌圖示（業主決定），數字只在卡片；卡片開著時自己每秒重算倒數（card.py）。
 - 睡眠喚醒後等 RESUME_DELAY_S 秒（網路通常還沒好）全部重抓。
 
 P4：抓取失敗時保留上一次的數字（model.carry_over）；剩餘 < 10% 跳通知（alerts.py，
@@ -34,7 +33,6 @@ from .providers import ALL, fetch_one
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = {"claude": 120, "codex": 120, "grok": 300}
-ICON_REFRESH_S = 30
 RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
 HIDE_DELAY_S = 0.4
@@ -101,10 +99,6 @@ class TrayApp(QObject):
             timer.timeout.connect(lambda n=name: self.poller.refresh(n))
             timer.start()
             self._timers.append(timer)
-        self._icon_timer = QTimer(self)
-        self._icon_timer.setInterval(ICON_REFRESH_S * 1000)
-        self._icon_timer.timeout.connect(self.redraw)
-        self._icon_timer.start()
 
         self.card = Card()
         self._card_anchor: tuple[int, int, int, int] | None = None
@@ -117,7 +111,7 @@ class TrayApp(QObject):
         self._resume_timer.setInterval(RESUME_DELAY_S * 1000)
         self._resume_timer.timeout.connect(self.refresh_all)
 
-        self.redraw()  # 資料回來前先顯示品牌圖示
+        self.tray.set_icon(icon.brand_png(self.icon_size), self.icon_size)
         self.refresh_all()
 
     @property
@@ -135,7 +129,7 @@ class TrayApp(QObject):
         self.states[state.name] = state
         log.info("%s: %s %s", state.name, state.status,
                  [(w.label, w.remaining_pct) for w in state.windows] or state.error)
-        self.redraw()
+        self.tray.set_tooltip(icon.tooltip([self.states[n] for n in ALL if n in self.states]))
         if self.card.isVisible():
             self.card.set_states(self._card_states())
         due = self.alerts.take_due([state], now)
@@ -145,13 +139,6 @@ class TrayApp(QObject):
 
     def _card_states(self) -> list[tuple[str, ProviderState | None]]:
         return [(name, self.states.get(name)) for name in ALL]
-
-    def redraw(self) -> None:
-        states = [self.states[n] for n in ALL if n in self.states]
-        spec = icon.summarize(states)
-        png = icon.brand_png(self.icon_size) if icon.is_loading(spec) else icon.render(spec, self.icon_size)
-        self.tray.set_icon(png, self.icon_size)
-        self.tray.set_tooltip(icon.tooltip(states))
 
     # ---------- 卡片 ----------
 
@@ -236,7 +223,7 @@ class TrayApp(QObject):
         return box.exec() == QMessageBox.Yes
 
     def shutdown(self) -> None:
-        for timer in self._timers + [self._icon_timer, self._hover_timer, self._resume_timer]:
+        for timer in self._timers + [self._hover_timer, self._resume_timer]:
             timer.stop()
         self.poller.shutdown()
         self.card.close()

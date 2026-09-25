@@ -1,15 +1,18 @@
-"""系統匣圖示：三家所有視窗中「最低剩餘 %」，綠／黃／紅（CLAUDE.md §4）。"""
+"""圖示與顏色門檻。
+
+系統匣一律顯示品牌圖示（業主 2026-09-25 決定，取代 CLAUDE.md §4 原本「動態畫最低剩餘 %」的設計）：
+數字看 hover 卡片，剩餘 < 10% 靠通知。顏色門檻仍給卡片進度條用。
+"""
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
-from .model import AUTH_EXPIRED, ERROR, ProviderState
+from .model import ProviderState
 
-# 剩餘 % 低於門檻就換色；紅色門檻與 P4 的 toast 門檻（< 10%）一致
+# 剩餘 % 低於門檻就換色；紅色門檻與通知門檻（< 10%）一致
 RED_BELOW = 10.0
 YELLOW_BELOW = 30.0
 
@@ -19,84 +22,26 @@ COLORS = {
     "red": (207, 34, 46),
     "grey": (110, 118, 129),
 }
-_FONT_DIR = Path(r"C:\Windows\Fonts")
-_SUPERSAMPLE = 4
 
-# 使用者設計的 App 圖示（原圖 D:\FISH\Desktop\ai-quota.png，裁掉四周光暈後縮成 512px）
+# 業主設計的 App 圖示（原圖 D:\FISH\Desktop\ai-quota.png，裁掉四周光暈後縮成 512px）
 ASSETS = Path(__file__).with_name("assets")
 BRAND_PNG = ASSETS / "app.png"
 _brand_cache: dict[int, bytes] = {}
 
 
-@dataclass(frozen=True)
-class IconSpec:
-    text: str
-    level: str  # green / yellow / red / grey
-    remaining: float | None  # 最低剩餘 %
-    source: str | None  # 例如 "grok 週"，給 tooltip 用
-
-
-def summarize(states: list[ProviderState]) -> IconSpec:
-    lowest: tuple[float, str] | None = None
-    for s in states:
-        for win in s.windows:
-            r = win.remaining_pct
-            if r is not None and (lowest is None or r < lowest[0]):
-                lowest = (r, f"{s.name} {win.label}")
-    if lowest is None:
-        broken = any(s.status in (ERROR, AUTH_EXPIRED) for s in states)
-        return IconSpec("!" if broken else "–", "grey", None, None)
-    remaining, source = lowest
-    # 無條件捨去：剩 9.6% 顯示 9 而不是 10，避免看起來比實際寬裕
-    return IconSpec(str(int(remaining)), level_for(remaining), remaining, source)
-
-
 def level_for(remaining: float) -> str:
-    """剩餘 % → 顏色等級。圖示與卡片進度條共用。"""
+    """剩餘 % → 顏色等級（卡片進度條用）。"""
     return "red" if remaining < RED_BELOW else "yellow" if remaining < YELLOW_BELOW else "green"
-
-
-def is_loading(spec: IconSpec) -> bool:
-    """還沒有任何資料（剛啟動）→ 系統匣先顯示品牌圖示。全部失敗的「!」不算。"""
-    return spec.text == "–"
 
 
 def brand_png(size: int) -> bytes:
     """品牌圖示縮到指定尺寸的 PNG（快取，縮圖很慢）。"""
     if size not in _brand_cache:
         out = io.BytesIO()
-        Image.open(BRAND_PNG).convert("RGBA").resize((size, size), Image.LANCZOS).save(out, "PNG")
+        with Image.open(BRAND_PNG) as src:
+            src.convert("RGBA").resize((size, size), Image.LANCZOS).save(out, "PNG")
         _brand_cache[size] = out.getvalue()
     return _brand_cache[size]
-
-
-def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for name in ("segoeuib.ttf", "arialbd.ttf"):
-        try:
-            return ImageFont.truetype(str(_FONT_DIR / name), px)
-        except OSError:
-            continue
-    return ImageFont.load_default(px)
-
-
-def render(spec: IconSpec, size: int) -> bytes:
-    """回傳 PNG bytes。先畫 4 倍大再縮小，16px 也不會鋸齒。"""
-    big = size * _SUPERSAMPLE
-    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((0, 0, big - 1, big - 1), radius=big // 5, fill=COLORS[spec.level])
-
-    # 字級依字數縮放：1–2 字吃滿，「100」要再小一點才放得下
-    font_px = int(big * (0.78 if len(spec.text) <= 2 else 0.56))
-    font = _font(font_px)
-    box = draw.textbbox((0, 0), spec.text, font=font)
-    x = (big - (box[2] - box[0])) / 2 - box[0]
-    y = (big - (box[3] - box[1])) / 2 - box[1]
-    draw.text((x, y), spec.text, font=font, fill=(255, 255, 255, 255))
-
-    out = io.BytesIO()
-    img.resize((size, size), Image.LANCZOS).save(out, format="PNG")
-    return out.getvalue()
 
 
 def tooltip(states: list[ProviderState]) -> str:
