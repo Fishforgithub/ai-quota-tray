@@ -20,6 +20,7 @@ STALE = "stale"
 AUTH_EXPIRED = "auth_expired"
 ERROR = "error"
 DISABLED = "disabled"
+PREPARING = "preparing"  # 第一次使用前在背景下載元件（Copilot SDK 的 runtime）
 
 # 顯示名稱（個人版）。上線版要避開商標（CLAUDE.md §5），到時只改這裡
 DISPLAY_NAME = {"claude": "Claude", "codex": "Codex",

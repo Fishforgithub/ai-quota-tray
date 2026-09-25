@@ -275,6 +275,31 @@ class AntigravityTest(unittest.TestCase):
         self.assertIn("未登入", state.error)
 
 
+class CodexAppServerCloseTest(unittest.TestCase):
+    def test_hung_server_kills_whole_tree(self):
+        # codex.CMD → cmd.exe → node.exe → codex.exe；只殺 cmd.exe 會留下兩個孤兒
+        import subprocess
+        from ai_quota_tray import codex_app_server as cas
+        client = cas.AppServerClient()
+        process = mock.Mock(pid=4321)
+        process.wait.side_effect = [subprocess.TimeoutExpired("codex", 2), 0]
+        client._process = process
+        with mock.patch.object(cas.subprocess, "run") as run, \
+                mock.patch.object(cas.sys, "platform", "win32"):
+            client.close()
+        process.stdin.close.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["taskkill", "/PID", "4321", "/T", "/F"])
+
+    def test_normal_close_just_closes_stdin(self):
+        from ai_quota_tray import codex_app_server as cas
+        client = cas.AppServerClient()
+        client._process = process = mock.Mock(pid=4321)
+        with mock.patch.object(cas.subprocess, "run") as run:
+            client.close()
+        process.stdin.close.assert_called_once()
+        run.assert_not_called()
+
+
 class ProbeTest(unittest.TestCase):
     def test_one_provider_crash_does_not_break_others(self):
         with mock.patch.object(claude, "fetch", side_effect=KeyError("boom")):

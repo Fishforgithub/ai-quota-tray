@@ -147,6 +147,7 @@ class CardTest(unittest.TestCase):
     def test_new_providers_and_nothing_enabled(self):
         self.assertIn("copilot login", status_message(st("copilot", AUTH_EXPIRED)))
         self.assertIn("Antigravity CLI", status_message(st("antigravity", AUTH_EXPIRED)))
+        self.assertIn("正在下載 Copilot 元件", status_message(st("copilot", "preparing")))
         self.assertEqual(status_message(st("copilot", detail={"unlimited": ["Chat", "補全"]})),
                          "無上限：Chat、補全")
         card = Card()

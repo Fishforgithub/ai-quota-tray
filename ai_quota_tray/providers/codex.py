@@ -120,6 +120,11 @@ def fetch_app_server(now: datetime) -> ProviderState:
     return parse_app_server(client.rate_limits(), now)
 
 
+def fetch_local(now: datetime) -> ProviderState:
+    """只讀本機 rollout，不連網。系統匣背景定時用（發低額度通知），打開卡片時才走 App Server。"""
+    return fetch_rollout(now)
+
+
 def fetch(use_token: bool = False, now: datetime | None = None) -> ProviderState:
     now = now or utcnow()
     try:

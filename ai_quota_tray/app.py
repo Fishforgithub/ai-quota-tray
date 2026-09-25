@@ -30,13 +30,18 @@ from . import config, i18n, icon, startup, win32tray
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
-from .model import ProviderState, carry_over, utcnow
-from .providers import ALL, fetch_one
+from .model import OK, PREPARING, STALE, ProviderState, carry_over, utcnow
+from .providers import ALL, fetch_local_one, fetch_one
+from .providers import copilot as copilot_provider
 from .settings import SettingsDialog
 
 log = logging.getLogger(__name__)
 
 LOCAL_POLL_INTERVAL_S = 120
+# 背景只讀本機紀錄（不連網）的那幾家；Claude 的 fetch 本身就只讀本機快取
+BACKGROUND_LOCAL = ("codex",)
+# 檔案來源自己有過期規則（model.apply_file_freshness），不用雲端的間隔判斷
+FILE_SOURCES = {"statusline-cache", "rollout"}
 VIEW_REFRESH_INTERVAL_S = {"codex": 120, "antigravity": 300, "copilot": 300}
 RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
@@ -49,32 +54,42 @@ MENU_REFRESH, MENU_QUIT, MENU_STARTUP, MENU_SETTINGS = 1, 2, 3, 4
 
 
 class Poller(QObject):
-    """背景抓取。同一家還在抓就不重複送出；沒啟用的不抓。"""
+    """背景抓取。同一家還在抓就不重複送出；沒啟用的不抓。
+
+    local=True 只讀本機紀錄（providers.fetch_local_one，不連網），結果走 fetched_local。
+    """
 
     fetched = Signal(object)  # ProviderState
+    fetched_local = Signal(object)  # ProviderState（背景讀本機紀錄）
 
     def __init__(self, enabled: set[str]):
         super().__init__()
         self.enabled = enabled & ALL.keys()
-        self._pool = ThreadPoolExecutor(max_workers=len(ALL), thread_name_prefix="poll")
+        self._pool = ThreadPoolExecutor(max_workers=len(ALL) * 2, thread_name_prefix="poll")
         self._inflight: set[str] = set()
 
-    def refresh(self, name: str) -> None:
-        if name in self._inflight or name not in self.enabled or name not in ALL:
+    def refresh(self, name: str, local: bool = False) -> None:
+        key = f"{name}:local" if local else name
+        if key in self._inflight or name not in self.enabled or name not in ALL:
             return
-        self._inflight.add(name)
-        future = self._pool.submit(fetch_one, name, False, utcnow())
+        self._inflight.add(key)
+        if local:
+            future, signal_ = self._pool.submit(fetch_local_one, name, utcnow()), self.fetched_local
+        else:
+            future, signal_ = self._pool.submit(fetch_one, name, False, utcnow()), self.fetched
         # done callback 在背景執行緒跑；跨執行緒 emit 會自動排進主執行緒
-        future.add_done_callback(lambda f, n=name: self.fetched.emit(f.result()))
+        future.add_done_callback(lambda f, s=signal_: s.emit(f.result()))
 
-    def done(self, name: str) -> None:
-        self._inflight.discard(name)
+    def done(self, name: str, local: bool = False) -> None:
+        self._inflight.discard(f"{name}:local" if local else name)
 
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
 
 class TrayApp(QObject):
+    copilot_ready = Signal()  # Copilot runtime 下載完成（背景執行緒 emit，排進主執行緒）
+
     def __init__(self, enabled: set[str], language: str = i18n.AUTO):
         super().__init__()
         self.language = language  # 設定值（auto／zh-TW／en）；實際語言在 i18n
@@ -86,12 +101,14 @@ class TrayApp(QObject):
                                    win32tray.large_icon_size())
         self.poller = Poller(set(enabled))
         self.poller.fetched.connect(self._on_fetched)
+        self.poller.fetched_local.connect(self._on_fetched_local)
+        self.copilot_ready.connect(self._on_copilot_ready)
         self._last_remote_attempt: dict[str, float] = {}
 
         self._timers = []
         local_timer = QTimer(self)
         local_timer.setInterval(LOCAL_POLL_INTERVAL_S * 1000)
-        local_timer.timeout.connect(lambda: self.poller.refresh("claude"))
+        local_timer.timeout.connect(self._poll_local)
         local_timer.start()
         self._timers.append(local_timer)
         freshness_timer = QTimer(self)
@@ -110,14 +127,33 @@ class TrayApp(QObject):
         self._resume_timer = QTimer(self)  # 喚醒會連來兩個事件，用同一個計時器合併
         self._resume_timer.setSingleShot(True)
         self._resume_timer.setInterval(RESUME_DELAY_S * 1000)
-        self._resume_timer.timeout.connect(lambda: self.poller.refresh("claude"))
+        self._resume_timer.timeout.connect(self._poll_local)
 
         self.tray.set_icon(icon.brand_png(self.icon_size), self.icon_size)
-        self.poller.refresh("claude")
+        self._poll_local()
+        if "copilot" in self.enabled:
+            self._prepare_copilot()  # 新電腦上設定檔已勾 Copilot：先把 runtime 抓好
 
     @property
     def enabled(self) -> set[str]:
         return self.poller.enabled
+
+    def _poll_local(self) -> None:
+        """背景定時：只讀本機檔案、不連網（低額度通知靠這個）。雲端來源只在打開卡片時查。"""
+        self.poller.refresh("claude")
+        for name in BACKGROUND_LOCAL:
+            self.poller.refresh(name, local=True)
+
+    def _prepare_copilot(self) -> None:
+        copilot_provider.start_prepare(self.copilot_ready.emit)
+
+    def _on_copilot_ready(self) -> None:
+        """runtime 下好了：卡片開著、或卡片上還寫「正在下載」，就馬上查一次。"""
+        state = self.states.get("copilot")
+        if "copilot" in self.enabled and (self.card.isVisible()
+                                          or (state is not None and state.status == PREPARING)):
+            self._last_remote_attempt["copilot"] = time.monotonic()
+            self.poller.refresh("copilot")
 
     def refresh_all(self) -> None:
         for name in ALL:
@@ -131,9 +167,11 @@ class TrayApp(QObject):
         changed = False
         for name, interval in VIEW_REFRESH_INTERVAL_S.items():
             state = self.states.get(name)
-            if state is not None and state.status == "ok" and state.fetched_at is not None:
+            if state is not None and state.source in FILE_SOURCES:
+                continue  # 背景讀到的本機紀錄照檔案來源的規則（15 分鐘）判斷過期
+            if state is not None and state.status == OK and state.fetched_at is not None:
                 if (now - state.fetched_at).total_seconds() >= interval:
-                    state.status = "stale"
+                    state.status = STALE
                     changed = True
         if changed:
             self._update_views()
@@ -153,6 +191,20 @@ class TrayApp(QObject):
         self.poller.done(state.name)
         if state.name not in self.enabled:
             return  # 抓到一半被使用者取消勾選
+        self._accept(state)
+
+    def _on_fetched_local(self, state: ProviderState) -> None:
+        """背景讀到的本機紀錄：讀不到就算了；比手上的數字舊（例如剛用 App Server 查過）也丟掉。"""
+        self.poller.done(state.name, local=True)
+        if state.name not in self.enabled or state.status not in (OK, STALE):
+            return
+        current = self.states.get(state.name)
+        if (current is not None and current.fetched_at is not None and state.fetched_at is not None
+                and state.fetched_at <= current.fetched_at):
+            return
+        self._accept(state)
+
+    def _accept(self, state: ProviderState) -> None:
         now = utcnow()
         state = carry_over(self.states.get(state.name), state, now)
         self.states[state.name] = state
@@ -267,6 +319,10 @@ class TrayApp(QObject):
         for name in changed:
             if name == "claude":
                 self.poller.refresh(name)
+            elif name in BACKGROUND_LOCAL:
+                self.poller.refresh(name, local=True)
+            elif name == "copilot":
+                self._prepare_copilot()  # 真正要看額度前就先把 runtime 下好
         if self.card.isVisible():
             self._refresh_on_view()
 

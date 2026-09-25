@@ -18,8 +18,8 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWi
 from . import placement
 from .i18n import join, tr, window_label
 from .icon import COLORS, level_for
-from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, STALE, ProviderState, Window,
-                    format_age, format_countdown, utcnow)
+from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, PREPARING, STALE, ProviderState,
+                    Window, format_age, format_countdown, utcnow)
 
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
             "antigravity": "Antigravity CLI"}
@@ -79,6 +79,8 @@ def status_message(state: ProviderState) -> str:
         return tr("card.auth_expired", cli=CLI_NAME.get(state.name, "CLI"))
     if state.status == DISABLED:
         return tr("card.disabled")
+    if state.status == PREPARING:
+        return tr("card.preparing")
     if state.status == ERROR:
         err = state.error or tr("card.unknown_error")
         return tr("card.error", err=err if len(err) <= ERROR_TEXT_MAX else err[:ERROR_TEXT_MAX] + "…")

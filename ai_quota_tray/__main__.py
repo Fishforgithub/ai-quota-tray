@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
                             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                             **({"filename": args.log, "encoding": "utf-8"} if args.log else {}))
         logging.getLogger("PIL").setLevel(logging.INFO)  # --debug 時 Pillow 會逐塊印 PNG 解碼
+        logging.getLogger("copilot").setLevel(logging.INFO)  # SDK 會逐筆印 JSON-RPC 請求
         from .app import run  # 延後 import：probe 不需要裝 PySide6
         return run()
 

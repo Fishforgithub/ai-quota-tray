@@ -6,14 +6,37 @@ import json
 import queue
 import shutil
 import subprocess
+import sys
 import threading
 from typing import Any
 
 RESPONSE_TIMEOUT_S = 12
+CLOSE_GRACE_S = 2
 
 
 class AppServerError(RuntimeError):
     """Codex App Server 無法提供資料。"""
+
+
+def _kill_tree(process: subprocess.Popen) -> None:
+    """卡住不退時連子行程一起殺。
+
+    Windows 上 `codex` 是 npm 的 codex.CMD：cmd.exe → node.exe → codex.exe 三層。
+    Popen.kill() 只殺得到最外層的 cmd.exe，裡面兩層會變成孤兒，所以用 taskkill /T。
+    """
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                           capture_output=True, timeout=5,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, subprocess.TimeoutExpired):
+            process.kill()
+    else:
+        process.kill()
+    try:
+        process.wait(timeout=CLOSE_GRACE_S)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 class AppServerClient:
@@ -100,14 +123,14 @@ class AppServerClient:
         if process is None:
             return
         if process.stdin:
-            process.stdin.close()
-        if process.poll() is None:
-            process.terminate()
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
         try:
-            process.wait(timeout=2)
+            process.wait(timeout=CLOSE_GRACE_S)  # 正常：關掉 stdin 後 codex 自己退出，整串一起結束
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=2)
+            _kill_tree(process)
 
     def close(self) -> None:
         with self._lock:

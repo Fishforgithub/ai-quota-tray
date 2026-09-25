@@ -173,6 +173,7 @@ class MenuTest(unittest.TestCase):
             mock.patch.object(app.startup, "is_enabled", return_value=False),
             mock.patch.object(app.startup, "enable", return_value="cmd"),
             mock.patch.object(app.startup, "disable"),
+            mock.patch.object(app.copilot_provider, "start_prepare"),  # 不能真的去下載 runtime
         ]
         for p in patches:
             p.start()
@@ -184,13 +185,49 @@ class MenuTest(unittest.TestCase):
 
     def test_remote_services_fetch_only_when_viewed_and_throttled(self):
         refresh = self.app_mod.Poller.refresh
-        self.assertEqual([call.args[0] for call in refresh.call_args_list], ["claude"])
+        # 啟動時只讀本機（Claude 快取、Codex rollout），不連網
+        self.assertEqual([(c.args, c.kwargs) for c in refresh.call_args_list],
+                         [(("claude",), {}), (("codex",), {"local": True})])
         refresh.reset_mock()
         with mock.patch.object(self.app_mod.time, "monotonic", side_effect=[1000, 1001, 1121]):
             self.tray_app._refresh_on_view()
             self.tray_app._refresh_on_view()
             self.tray_app._refresh_on_view()
         self.assertEqual([call.args[0] for call in refresh.call_args_list], ["codex", "codex"])
+
+    def test_background_local_only_replaces_older_numbers(self):
+        now = self.app_mod.utcnow()
+        live = ProviderState("codex", [make_window(94, WEEK_END, 18000)], now, OK,
+                             source="codex-app-server")
+        self.tray_app._on_fetched(live)
+        older = ProviderState("codex", [make_window(0, WEEK_END, 18000)], now - timedelta(minutes=30),
+                              STALE, source="rollout")
+        self.tray_app._on_fetched_local(older)
+        self.assertIs(self.tray_app.states["codex"], live)  # 本機紀錄比 App Server 舊，不蓋掉
+        self.tray_app._on_fetched_local(ProviderState("codex", [], None, ERROR, error="no rollout"))
+        self.assertIs(self.tray_app.states["codex"], live)  # 讀不到本機紀錄也不蓋掉
+        newer = ProviderState("codex", [make_window(96, WEEK_END, 18000)], now + timedelta(minutes=1),
+                              OK, source="rollout")
+        self.tray_app._on_fetched_local(newer)
+        self.assertEqual(self.tray_app.states["codex"].windows[0].used_pct, 96.0)
+
+    def test_background_local_triggers_low_quota_alert(self):
+        # 不打開卡片、不連網，也要能發低額度通知
+        self.tray_app.alerts.take_due.return_value = [("Codex 5h 額度剩 4%", "body")]
+        self.tray_app._on_fetched_local(ProviderState(
+            "codex", [make_window(96, WEEK_END, 18000)], self.app_mod.utcnow(), OK, source="rollout"))
+        self.tray_app.tray.show_balloon.assert_called_once()
+
+    def test_rollout_states_follow_file_freshness_not_remote_interval(self):
+        five_min = self.app_mod.utcnow() - timedelta(minutes=5)
+        self.tray_app._on_fetched_local(ProviderState(
+            "codex", [make_window(50, WEEK_END, 18000)], five_min, OK, source="rollout"))
+        self.tray_app._mark_remote_stale()
+        self.assertEqual(self.tray_app.states["codex"].status, OK)
+
+    def test_enabling_copilot_prepares_runtime(self):
+        self.tray_app.apply_settings({"claude", "codex", "copilot"})
+        self.app_mod.copilot_provider.start_prepare.assert_called_once()
 
     def test_old_remote_numbers_are_marked_stale(self):
         old = self.app_mod.utcnow() - timedelta(seconds=121)

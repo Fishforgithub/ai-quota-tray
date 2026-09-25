@@ -37,6 +37,8 @@ STRINGS: dict[str, tuple[str, str]] = {
     "card.auth_copilot": ("Copilot 登入失效，請執行 copilot login",
                           "Copilot sign-in expired, run copilot login"),
     "card.disabled": ("未啟用", "Not enabled"),
+    "card.preparing": ("第一次使用，正在下載 Copilot 元件（約 111 MB）…",
+                       "First use: downloading Copilot components (about 111 MB)…"),
     "card.error": ("抓取失敗：{err}", "Fetch failed: {err}"),
     "card.unknown_error": ("未知錯誤", "unknown error"),
     "card.no_data": ("沒有額度資料", "No quota data"),
