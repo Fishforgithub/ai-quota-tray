@@ -14,7 +14,7 @@ python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + 
 .venv\Scripts\python -m ai_quota_tray probe                     # 依各 provider 固定來源抓取
 .venv\Scripts\python -m ai_quota_tray probe --raw               # 附原始回傳（token/姓名/email/id/UUID 已遮罩）
 .venv\Scripts\python -m ai_quota_tray tray --debug              # 系統匣常駐（pythonw 可免主控台；--log FILE 寫檔）
-powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\AiQuotaTray\AiQuotaTray.exe（onedir，約 88 MB）
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\AiQuotaTray\AiQuotaTray.exe（onedir，約 110 MB）
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
 
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
   - 右鍵選單（業主要求保持乾淨）：立即刷新／設定…／開機時啟動／關閉。
   - 設定視窗（`settings.py`，非模態、只開一個）：標題「AI Quota Tray · 服務設定」，只提供服務啟用勾選和語言選擇；資料來源由各 provider 固定決定。來源說明收在可展開區。預設只啟用 Claude、Codex；未啟用的服務不抓取、不顯示、不發通知。底部有自家「萌寵桌面精靈／Taskbar Buddy」中英文廣告橫幅，素材取自官網 repo，僅點擊時開啟 Microsoft Store 商品頁。設定存於 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `enabled`／`language`，舊 `token_sources` 在下次儲存時移除。
   - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入目前的啟動方式（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
-  - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（啟用服務照 config.json）。
+  - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（啟用服務照 config.json）。Copilot SDK 要 `--copy-metadata github-copilot-sdk`（它從套件 metadata 讀自己的版本號，沒帶會變 `0.0.0.dev0`）；SDK 帶進 pydantic／httpx，整包從 88 MB 變 110.5 MB，runtime（111 MB）不在包裡、執行時才下載。2026-09-26 打包版實測：啟動只讀本機、hover 後四家都抓到、卡片截圖（PrintWindow）正常、廣告 webp 有 `qwebp.dll`；查完 Copilot runtime 與 agy 都會結束，只有 Codex App Server 三層常駐，關閉程式後全部清掉。
   - 已驗證：unittest 55 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`；`SettingsDialogTest`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；實際從右鍵開設定視窗截圖看過；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
   - 🔴 教訓（2026-09-25）：P4 用「字串替換」插入 `_context_menu` 時比對到**第一個** `def shutdown`（`Poller` 的），方法進了錯的類別 → 右鍵一按 `AttributeError`（被 `_proc` 吞掉只寫 log，畫面上就是「右鍵沒反應」），當時的測試都沒走到選單。改 `app.py` 要用能看到上下文的編輯方式，選單相關改動要跑 `MenuTest`。
 - 狀態值比 §2 多一個 `disabled`（歷史相容狀態）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。

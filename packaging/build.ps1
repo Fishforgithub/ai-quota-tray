@@ -10,6 +10,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
     --paths . `
     --icon ai_quota_tray\assets\app.ico `
     --add-data "ai_quota_tray\assets;ai_quota_tray\assets" `
+    --copy-metadata github-copilot-sdk `
     --exclude-module tkinter `
     packaging\launch.py
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller 失敗（$LASTEXITCODE）" }
