@@ -1,0 +1,9 @@
+[project]
+name = "ai-quota-tray"
+version = "0.1.0"
+description = "Windows 系統匣常駐工具：顯示各家 AI 訂閱的剩餘額度與重置倒數"
+requires-python = ">=3.11"
+dependencies = []  # P1 只用標準函式庫；P2 起加 PySide6 / pywin32 / Pillow / watchdog
+
+[project.scripts]
+ai-quota-tray = "ai_quota_tray.__main__:main"
