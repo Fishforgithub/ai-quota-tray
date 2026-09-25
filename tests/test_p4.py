@@ -242,15 +242,23 @@ class SettingsDialogTest(unittest.TestCase):
         self.assertEqual(dlg.groups["grok"].checkedId(), API)
         self.assertFalse(dlg.groups["grok"].button(LOCAL).isEnabled())
 
-    def test_texts_explain_default_and_risk(self):
-        from PySide6.QtWidgets import QGroupBox, QLabel
+    def test_minimal_layout_with_collapsed_help(self):
+        # 業主設計稿：表格只放勾選，說明收進「各資料來源的說明與限制」且預設收合
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QLabel, QPushButton
         dlg, _ = self.make({"grok"})
-        titles = [b.title() for b in dlg.findChildren(QGroupBox)]
-        self.assertIn("Claude　（預設：本機紀錄）", titles)
-        self.assertIn("Grok　（預設：API）", titles)
-        text = " ".join(lbl.text() for lbl in dlg.findChildren(QLabel))
-        self.assertIn("違反使用條款", text)
-        self.assertIn("不碰你的登入憑證", text)
+        self.assertEqual(dlg.windowTitle(), "AI Quota Tray · 資料來源")
+        self.assertFalse(dlg.windowIcon().isNull())  # 工作列要用產品圖示
+        texts = [lbl.text() for lbl in dlg.findChildren(QLabel)]
+        for t in ("服務", "本機紀錄", "API", "Claude", "Codex", "Grok", "不支援"):
+            self.assertIn(t, texts)
+        self.assertEqual(sorted(b.text() for b in dlg.findChildren(QPushButton)), ["儲存", "取消"])
+        self.assertFalse(dlg.help.isVisibleTo(dlg))
+        dlg.help_toggle.click()
+        self.assertTrue(dlg.help.isVisibleTo(dlg))
+        self.assertEqual(dlg.help_toggle.arrowType(), Qt.DownArrow)
+        self.assertIn("違反 Anthropic 使用條款", dlg.help.text())
+        self.assertIn("不碰登入憑證", dlg.help.text())
 
     def test_claude_api_needs_confirmation(self):
         from ai_quota_tray.settings import API, LOCAL
@@ -265,17 +273,15 @@ class SettingsDialogTest(unittest.TestCase):
             dlg.accept()
         self.assertEqual(applied, [{"claude", "grok"}])
 
-    def test_reset_to_default_and_no_change_no_apply(self):
-        from PySide6.QtWidgets import QPushButton
-
-        from ai_quota_tray.settings import LOCAL
-        dlg, _ = self.make({"codex", "grok"})
-        [b for b in dlg.findChildren(QPushButton) if b.text() == "還原預設"][0].click()
-        self.assertEqual(dlg.groups["codex"].checkedId(), LOCAL)
-        self.assertEqual(dlg.selected(), {"grok"})
+    def test_no_change_no_apply_and_cancel(self):
+        from ai_quota_tray.settings import API
+        dlg, applied = self.make({"grok"})
+        dlg.accept()
+        self.assertEqual(applied, [])  # 沒改就不套用、不重抓
         dlg2, applied2 = self.make({"grok"})
-        dlg2.accept()
-        self.assertEqual(applied2, [])  # 沒改就不套用、不重抓
+        dlg2.groups["codex"].button(API).setChecked(True)
+        dlg2.reject()
+        self.assertEqual(applied2, [])  # 取消不套用
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ HOVER_CHECK_MS = 150
 HIDE_DELAY_S = 0.4
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
+APP_USER_MODEL_ID = "AiQuotaTray.App"
 
 MENU_REFRESH, MENU_QUIT, MENU_STARTUP, MENU_SETTINGS = 1, 2, 3, 4
 
@@ -237,6 +238,7 @@ def run(cli_tokens: set[str] | None) -> int:
         config.save_token_sources(cli_tokens)
     token_set = config.load_token_sources(set(ALL))
 
+    win32tray.set_app_id(APP_USER_MODEL_ID)  # 工作列用我們的圖示，不歸到 pythonw.exe
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 沒有任何 Qt 視窗也要常駐
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))

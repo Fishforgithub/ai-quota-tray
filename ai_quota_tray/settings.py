@@ -1,112 +1,187 @@
-"""設定視窗：每家選「API」或「本機紀錄」，並說明預設值與改用 API 的風險。
+"""設定視窗：每家勾「本機紀錄」或「API」。
 
-右鍵選單只留「設定…」一個入口，保持乾淨（業主 2026-09-25 要求）。
+版面照業主的設計稿（2026-09-25）：一張三欄表（服務｜本機紀錄｜API），
+說明與風險全部收進底下可展開的「各資料來源的說明與限制」，預設收合。
 """
 from __future__ import annotations
 
 from typing import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QButtonGroup, QDialog, QDialogButtonBox, QGroupBox, QLabel,
-                               QMessageBox, QPushButton, QRadioButton, QVBoxLayout)
+from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtWidgets import (QButtonGroup, QDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
+                               QMessageBox, QPushButton, QRadioButton, QToolButton, QVBoxLayout,
+                               QWidget)
 
-from .config import DEFAULT_TOKEN_SOURCES, HAS_LOCAL_SOURCE
+from .config import HAS_LOCAL_SOURCE
+from .icon import BRAND_PNG
 from .model import DISPLAY_NAME
 
 ORDER = ("claude", "codex", "grok")
 LOCAL, API = 0, 1
 
-INTRO = (
-    "<b>本機紀錄</b>：讀各家 CLI 自己留在這台電腦上的紀錄，<b>不碰你的登入憑證</b>。<br>"
-    "<b>API</b>：讀 CLI 登入後存下的 token，直接向該服務的伺服器查額度，數字隨時最新。"
-    "本程式只讀取 token，不會更新它，也只送到該服務自己的伺服器。"
+HEADING = "選擇各服務的用量資料來源"
+SUBTITLE = "每個服務只需選一種來源；可隨時回來更改。"
+HELP_TOGGLE = "各資料來源的說明與限制"
+HELP_TEXT = (
+    "・<b>本機紀錄</b>：讀 CLI 留在本機的紀錄，不碰登入憑證；沒在用 CLI 時數字會停住。<br>"
+    "・<b>API</b>：用 CLI 的登入 token 向伺服器查，隨時最新。<br>"
+    "・⚠️ Claude 用 API 違反 Anthropic 使用條款，可能被封鎖。<br>"
+    "・Grok 沒有本機紀錄，只能用 API；token 約 6 小時過期，過期請開一下 Grok CLI。"
 )
-
-# (本機紀錄說明, API 說明, API 是否特別危險)
-SOURCE_INFO = {
-    "claude": (
-        "Claude Code 開著時即時更新；沒開時停在最後一次，卡片會顯示「n 分鐘前」。"
-        "需要 Claude Code 的 statusLine hook。",
-        "隨時最新。⚠️ Anthropic 自 2026-02 起明文規定：Free／Pro／Max 的登入 token 用在 "
-        "Claude Code、claude.ai 以外的工具即違反使用條款，而且曾經技術封鎖過，可能影響你的帳號。",
-        True,
-    ),
-    "codex": (
-        "只有在使用 Codex 時才會更新；閒置幾天的話數字會落後。",
-        "隨時最新。使用 Codex CLI 的登入 token 查詢 ChatGPT 的非公開額度 API；"
-        "OpenAI 對第三方工具這樣使用沒有明文說明。token 過期時請開一下 Codex CLI。",
-        False,
-    ),
-    "grok": (
-        "🚫 無法使用：Grok CLI 不在本機留下額度紀錄。",
-        "唯一的取得方式。使用 Grok CLI 的登入 token 查詢額度；xAI 對第三方工具這樣使用沒有明文說明。"
-        "token 效期約 6 小時，過期時卡片會提示「請開一下 Grok CLI」。",
-        False,
-    ),
-}
-
 CLAUDE_CONFIRM = (
-    "你選了讓 Claude 使用 API。\n\n"
-    "Anthropic 自 2026-02 起明文規定：Free／Pro／Max 的 OAuth token 用在 Claude Code、"
-    "claude.ai 以外的任何工具都違反 Consumer ToS，而且曾經技術封鎖過。\n\n"
-    "不開也能用：Claude 的數字會從 Claude Code 的 statusLine 取得。\n\n確定要改用 API 嗎？"
+    "Claude 改用 API 違反 Anthropic 使用條款（Free／Pro／Max 的登入 token 只能用在 "
+    "Claude Code 與 claude.ai），曾經技術封鎖過，可能影響你的帳號。\n\n確定要改用 API 嗎？"
 )
 
+PALETTE = {
+    "dark": {"bg": "#23262b", "panel": "#1d2025", "line": "#3a3f47", "text": "#e8eaed",
+             "dim": "#9aa0a6", "accent": "#3b8fc4", "accent_hover": "#4a9fd4", "button": "#2f333a"},
+    "light": {"bg": "#f6f7f9", "panel": "#ffffff", "line": "#d7dbe0", "text": "#1f2328",
+              "dim": "#5f6368", "accent": "#1a73e8", "accent_hover": "#3b86ec", "button": "#e9ecef"},
+}
+CELL_MARGINS = (16, 9, 16, 9)
 
-def default_label(name: str) -> str:
-    return "API" if name in DEFAULT_TOKEN_SOURCES or not HAS_LOCAL_SOURCE[name] else "本機紀錄"
+
+def _palette() -> dict[str, str]:
+    dark = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+    return PALETTE["dark" if dark else "light"]
+
+
+def _style(p: dict[str, str]) -> str:
+    return f"""
+        QDialog {{ background: {p['bg']}; }}
+        QLabel {{ color: {p['text']}; }}
+        QLabel#sub, QLabel#head, QLabel#unsupported, QLabel#help {{ color: {p['dim']}; }}
+        QLabel#heading {{ font-size: 12pt; }}
+        QFrame#table {{ background: {p['panel']}; border: 1px solid {p['line']}; border-radius: 8px; }}
+        QFrame#line {{ background: {p['line']}; border: none; }}
+        QToolButton#helpToggle {{ color: {p['dim']}; border: none; background: transparent; }}
+        QToolButton#helpToggle:hover {{ color: {p['text']}; }}
+        QPushButton {{ min-width: 88px; min-height: 30px; border-radius: 6px; padding: 0 14px;
+                      color: {p['text']}; background: {p['button']}; border: 1px solid {p['line']}; }}
+        QPushButton#save {{ color: white; background: {p['accent']}; border: none; }}
+        QPushButton#save:hover {{ background: {p['accent_hover']}; }}
+    """
+
+
+def _cell(*widgets: QWidget, align=Qt.AlignCenter) -> QWidget:
+    box = QWidget()
+    lay = QHBoxLayout(box)
+    lay.setContentsMargins(*CELL_MARGINS)
+    lay.setSpacing(10)
+    lay.setAlignment(align)
+    for wdg in widgets:
+        lay.addWidget(wdg)
+    return box
+
+
+def _line() -> QFrame:
+    line = QFrame()
+    line.setObjectName("line")
+    line.setFixedHeight(1)
+    return line
 
 
 class SettingsDialog(QDialog):
     def __init__(self, token_sources: set[str], on_apply: Callable[[set[str]], None]):
         super().__init__(None, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
-        self.setWindowTitle("AI Quota Tray 設定")
-        self.setMinimumWidth(540)
+        self.setWindowTitle("AI Quota Tray · 資料來源")
+        self.setWindowIcon(QIcon(str(BRAND_PNG)))
+        self.setStyleSheet(_style(_palette()))
+        self.setFixedWidth(600)
         self._initial = set(token_sources)
         self._on_apply = on_apply
         self.groups: dict[str, QButtonGroup] = {}
 
         root = QVBoxLayout(self)
-        title = QLabel("<b>資料來源</b>")
-        root.addWidget(title)
-        intro = QLabel(INTRO)
-        intro.setWordWrap(True)
-        root.addWidget(intro)
+        root.setContentsMargins(24, 20, 24, 18)
+        root.setSpacing(6)
+        heading = QLabel(HEADING)
+        heading.setObjectName("heading")
+        sub = QLabel(SUBTITLE)
+        sub.setObjectName("sub")
+        root.addWidget(heading)
+        root.addWidget(sub)
+        root.addSpacing(10)
+        root.addWidget(self._table())
 
-        for name in ORDER:
-            local_text, api_text, dangerous = SOURCE_INFO[name]
-            box = QGroupBox(f"{DISPLAY_NAME[name]}　（預設：{default_label(name)}）")
-            lay = QVBoxLayout(box)
-            group = QButtonGroup(self)
-            for choice, label, text, warn in ((LOCAL, "本機紀錄", local_text, False),
-                                              (API, "API", api_text, dangerous)):
-                radio = QRadioButton(label)
-                radio.setObjectName(f"{name}_{'api' if choice == API else 'local'}")
-                group.addButton(radio, choice)
-                desc = QLabel(text)
-                desc.setWordWrap(True)
-                desc.setContentsMargins(22, 0, 0, 6)  # 對齊單選按鈕的文字
-                if warn:
-                    desc.setStyleSheet("color: #d93025")
-                if choice == LOCAL and not HAS_LOCAL_SOURCE[name]:
-                    radio.setEnabled(False)
-                    desc.setEnabled(False)
-                lay.addWidget(radio)
-                lay.addWidget(desc)
-            self.groups[name] = group
-            root.addWidget(box)
+        root.addSpacing(8)
+        self.help_toggle = QToolButton()
+        self.help_toggle.setObjectName("helpToggle")
+        self.help_toggle.setText(HELP_TOGGLE)
+        self.help_toggle.setCheckable(True)
+        self.help_toggle.setArrowType(Qt.RightArrow)
+        self.help_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.help_toggle.toggled.connect(self._toggle_help)
+        self.help = QLabel(HELP_TEXT)
+        self.help.setObjectName("help")
+        self.help.setWordWrap(True)
+        self.help.setContentsMargins(18, 0, 0, 0)
+        self.help.setVisible(False)
+        root.addWidget(self.help_toggle, alignment=Qt.AlignLeft)
+        root.addWidget(self.help)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.button(QDialogButtonBox.Ok).setText("確定")
-        buttons.button(QDialogButtonBox.Cancel).setText("取消")
-        reset = QPushButton("還原預設")
-        buttons.addButton(reset, QDialogButtonBox.ResetRole)
-        reset.clicked.connect(lambda: self.select(set(DEFAULT_TOKEN_SOURCES)))
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
+        root.addSpacing(6)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("取消")
+        cancel.clicked.connect(self.reject)
+        save = QPushButton("儲存")
+        save.setObjectName("save")
+        save.setDefault(True)
+        save.clicked.connect(self.accept)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        root.addLayout(buttons)
 
         self.select(self._initial)
+
+    def _table(self) -> QFrame:
+        table = QFrame()
+        table.setObjectName("table")
+        grid = QGridLayout(table)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(0)
+        grid.setColumnStretch(0, 3)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 2)
+
+        for col, text in enumerate(("服務", "本機紀錄", "API")):
+            head = QLabel(text)
+            head.setObjectName("head")
+            grid.addWidget(_cell(head, align=Qt.AlignLeft if col == 0 else Qt.AlignCenter), 0, col)
+
+        row = 1
+        for name in ORDER:
+            grid.addWidget(_line(), row, 0, 1, 3)
+            row += 1
+            group = QButtonGroup(self)
+            local, api = QRadioButton(), QRadioButton()
+            local.setObjectName(f"{name}_local")
+            api.setObjectName(f"{name}_api")
+            local.setAccessibleName(f"{DISPLAY_NAME[name]} 本機紀錄")
+            api.setAccessibleName(f"{DISPLAY_NAME[name]} API")
+            group.addButton(local, LOCAL)
+            group.addButton(api, API)
+            self.groups[name] = group
+
+            local_cell = [local]
+            if not HAS_LOCAL_SOURCE[name]:
+                local.setEnabled(False)
+                note = QLabel("不支援")
+                note.setObjectName("unsupported")
+                local_cell.append(note)
+            grid.addWidget(_cell(QLabel(DISPLAY_NAME[name]), align=Qt.AlignLeft), row, 0)
+            grid.addWidget(_cell(*local_cell), row, 1)
+            grid.addWidget(_cell(api), row, 2)
+            row += 1
+        return table
+
+    def _toggle_help(self, shown: bool) -> None:
+        self.help_toggle.setArrowType(Qt.DownArrow if shown else Qt.RightArrow)
+        self.help.setVisible(shown)
+        self.adjustSize()
 
     def select(self, token_sources: set[str]) -> None:
         for name, group in self.groups.items():
@@ -126,7 +201,7 @@ class SettingsDialog(QDialog):
         chosen = self.selected()
         if "claude" in chosen and "claude" not in self._initial and not self.confirm_claude():
             self.groups["claude"].button(LOCAL).setChecked(True)
-            return  # 留在視窗上讓使用者再看一次
+            return  # 留在視窗上
         if chosen != self._initial:
             self._on_apply(chosen)
         super().accept()

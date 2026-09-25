@@ -105,6 +105,7 @@ _sig(shell32.Shell_NotifyIconGetRect, ctypes.c_long, ctypes.POINTER(NOTIFYICONID
      ctypes.POINTER(w.RECT))
 _sig(kernel32.GetModuleHandleW, w.HMODULE, w.LPCWSTR)
 _sig(kernel32.CreateMutexW, w.HANDLE, w.LPVOID, w.BOOL, w.LPCWSTR)
+_sig(shell32.SetCurrentProcessExplicitAppUserModelID, ctypes.c_long, w.LPCWSTR)
 
 
 def _signed_word(value: int) -> int:
@@ -134,6 +135,15 @@ def small_icon_size() -> int:
 def large_icon_size() -> int:
     """通知（NIIF_LARGE_ICON）用的大圖示像素（100% = 32）。"""
     return user32.GetSystemMetricsForDpi(SM_CXICON, user32.GetDpiForSystem())
+
+
+def set_app_id(app_id: str) -> None:
+    """讓工作列把我們的視窗當成獨立的 App（用我們的視窗圖示）。
+
+    不設的話，venv 版會被歸到 pythonw.exe 底下、工作列顯示 Python 的圖示。
+    必須在建立任何視窗之前呼叫。
+    """
+    shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
 
 
 def acquire_single_instance(name: str) -> object | None:
