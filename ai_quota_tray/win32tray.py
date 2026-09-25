@@ -36,12 +36,12 @@ NIN_BALLOONUSERCLICK = 0x0405
 NIN_POPUPOPEN, NIN_POPUPCLOSE = 0x0406, 0x0407
 NIM_ADD, NIM_MODIFY, NIM_DELETE, NIM_SETVERSION = 0, 1, 2, 4
 NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_INFO = 0x01, 0x02, 0x04, 0x10
-NIIF_WARNING, NIIF_RESPECT_QUIET_TIME = 0x02, 0x80
+NIIF_WARNING, NIIF_USER, NIIF_LARGE_ICON, NIIF_RESPECT_QUIET_TIME = 0x02, 0x04, 0x20, 0x80
 NOTIFYICON_VERSION_4 = 4
 MF_STRING, MF_GRAYED, MF_CHECKED, MF_SEPARATOR = 0x0000, 0x0001, 0x0008, 0x0800
 TPM_RIGHTBUTTON, TPM_NONOTIFY, TPM_RETURNCMD = 0x0002, 0x0080, 0x0100
 TPM_BOTTOMALIGN = 0x0020
-SM_CXSMICON = 49
+SM_CXICON, SM_CXSMICON = 11, 49
 ERROR_ALREADY_EXISTS = 183
 TRAY_ID = 1
 
@@ -131,6 +131,11 @@ def small_icon_size() -> int:
     return user32.GetSystemMetricsForDpi(SM_CXSMICON, user32.GetDpiForSystem())
 
 
+def large_icon_size() -> int:
+    """通知（NIIF_LARGE_ICON）用的大圖示像素（100% = 32）。"""
+    return user32.GetSystemMetricsForDpi(SM_CXICON, user32.GetDpiForSystem())
+
+
 def acquire_single_instance(name: str) -> object | None:
     """拿到回傳 handle（呼叫端要一直留著）；已有另一份在跑回 None。"""
     handle = kernel32.CreateMutexW(None, False, name)
@@ -164,6 +169,7 @@ class TrayIcon:
         self._on_event = on_event
         self._tooltip = tooltip
         self._hicon = None
+        self._balloon_hicon = None
         self._hinst = kernel32.GetModuleHandleW(None)
         self._wndproc = WNDPROC(self._proc)  # 要留參考，不然會被 GC 掉
         self._taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
@@ -213,6 +219,12 @@ class TrayIcon:
         if self._added:
             shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self._data(NIF_TIP)))
 
+    def set_balloon_icon(self, png: bytes, size: int) -> None:
+        """通知用的大圖示（品牌圖示）。沒設就用系統的警告圖示。"""
+        old, self._balloon_hicon = self._balloon_hicon, hicon_from_png(png, size)
+        if old:
+            user32.DestroyIcon(old)
+
     def show_balloon(self, title: str, text: str) -> None:
         """Windows 10/11 會顯示成 toast 通知；勿擾模式（quiet time）時不打擾。"""
         if not self._added:
@@ -220,7 +232,11 @@ class TrayIcon:
         nid = self._data(NIF_INFO)
         nid.szInfoTitle = title[:63]
         nid.szInfo = text[:255]
-        nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME
+        if self._balloon_hicon:
+            nid.hBalloonIcon = self._balloon_hicon
+            nid.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON | NIIF_RESPECT_QUIET_TIME
+        else:
+            nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME
         shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
 
     def icon_rect(self) -> tuple[int, int, int, int] | None:
@@ -257,9 +273,10 @@ class TrayIcon:
         if self._added:
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._data(0)))
             self._added = False
-        if self._hicon:
-            user32.DestroyIcon(self._hicon)
-            self._hicon = None
+        for attr in ("_hicon", "_balloon_hicon"):
+            if getattr(self, attr):
+                user32.DestroyIcon(getattr(self, attr))
+                setattr(self, attr, None)
         if self.hwnd:
             user32.DestroyWindow(self.hwnd)
             self.hwnd = None

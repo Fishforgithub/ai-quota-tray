@@ -8,6 +8,8 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
     --name AiQuotaTray `
     --distpath dist --workpath build `
     --paths . `
+    --icon ai_quota_tray\assets\app.ico `
+    --add-data "ai_quota_tray\assets;ai_quota_tray\assets" `
     --exclude-module tkinter `
     packaging\launch.py
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller 失敗（$LASTEXITCODE）" }

@@ -10,7 +10,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from ai_quota_tray import alerts, startup  # noqa: E402
+from ai_quota_tray import alerts, config, startup  # noqa: E402
 from ai_quota_tray.card import header_note, is_dimmed  # noqa: E402
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE,  # noqa: E402
                                  ProviderState, carry_over, make_window)
@@ -98,30 +98,130 @@ class AlertTest(unittest.TestCase):
 class StartupTest(unittest.TestCase):
     TEST_KEY = r"Software\AiQuotaTray-unittest"  # 不碰真正的 Run 機碼
 
-    def test_command_uses_pythonw_and_tokens(self):
-        cmd = startup.command_line({"grok", "codex"})
+    def test_command_uses_pythonw_without_tokens(self):
+        # token 來源在 config.json；帶 --token 會在每次開機蓋掉選單的選擇
+        cmd = startup.command_line()
         self.assertIn("pythonw.exe", cmd)
-        self.assertTrue(cmd.endswith("-m ai_quota_tray tray --token codex,grok"))
-        self.assertTrue(startup.command_line(set()).endswith("tray"))
+        self.assertTrue(cmd.endswith("-m ai_quota_tray tray"))
 
     def test_frozen_exe(self):
         with mock.patch.object(sys, "frozen", True, create=True), \
                 mock.patch.object(sys, "executable", r"C:\Apps\AI Quota Tray\AiQuotaTray.exe"):
-            self.assertEqual(startup.command_line({"grok"}),
-                             r'"C:\Apps\AI Quota Tray\AiQuotaTray.exe" tray --token grok')
+            self.assertEqual(startup.command_line(), r'"C:\Apps\AI Quota Tray\AiQuotaTray.exe" tray')
 
     def test_registry_roundtrip(self):
         winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.TEST_KEY).Close()
         try:
             with mock.patch.object(startup, "RUN_KEY", self.TEST_KEY):
                 self.assertFalse(startup.is_enabled())
-                cmd = startup.enable({"grok"})
+                cmd = startup.enable()
                 self.assertEqual(startup.registered_command(), cmd)
                 startup.disable()
                 self.assertFalse(startup.is_enabled())
                 startup.disable()  # 重複關閉不報錯
         finally:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, self.TEST_KEY)
+
+
+class ConfigTest(unittest.TestCase):
+    def test_roundtrip_ignores_unknown_and_keeps_other_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sub" / "config.json"
+            known = {"claude", "codex", "grok"}
+            self.assertEqual(config.load_token_sources(known, path), set())  # 沒檔案＝全部不用
+            path.parent.mkdir()
+            path.write_text('{"other": 1, "token_sources": ["grok", "bogus"]}', encoding="utf-8")
+            self.assertEqual(config.load_token_sources(known, path), {"grok"})
+            config.save_token_sources({"codex", "grok"}, path)
+            self.assertEqual(config.load_token_sources(known, path), {"codex", "grok"})
+            self.assertIn('"other": 1', path.read_text(encoding="utf-8"))
+            path.write_text("{broken", encoding="utf-8")
+            self.assertEqual(config.load_token_sources(known, path), set())
+            config.save_token_sources({"grok"}, path)  # 壞檔直接覆寫
+            self.assertEqual(config.load_token_sources(known, path), {"grok"})
+
+
+class MenuTest(unittest.TestCase):
+    """右鍵選單：真的走一次 TrayApp 的事件處理（2026-09-25 曾因方法插錯類別，右鍵直接 AttributeError）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+        cls.qapp = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from ai_quota_tray import app
+        self.app_mod = app
+        self.tmp = tempfile.TemporaryDirectory()
+        cfg = Path(self.tmp.name) / "config.json"
+        patches = [
+            mock.patch.object(app.win32tray, "TrayIcon"),
+            mock.patch.object(app.win32tray, "small_icon_size", return_value=16),
+            mock.patch.object(app.win32tray, "large_icon_size", return_value=32),
+            mock.patch.object(app.Poller, "refresh"),
+            mock.patch.object(app, "AlertStore"),
+            mock.patch.object(app.config, "config_path", return_value=cfg),
+            mock.patch.object(app.startup, "is_enabled", return_value=False),
+            mock.patch.object(app.startup, "enable", return_value="cmd"),
+            mock.patch.object(app.startup, "disable"),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.cfg = cfg
+        self.tray_app = app.TrayApp({"grok"})
+        self.addCleanup(self.tray_app.shutdown)
+
+    def labels(self):
+        return [(text, checked) for mid, text, _, checked in self.tray_app.menu_items() if mid]
+
+    def test_menu_has_required_items(self):
+        labels = self.labels()
+        texts = [t for t, _ in labels]
+        for required in ("立即刷新", "開機時啟動", "關閉"):
+            self.assertIn(required, texts)
+        self.assertIn(("Grok 使用 API（必要）", True), labels)
+        self.assertIn(("Codex 使用 API（較即時）", False), labels)
+
+    def test_right_click_opens_menu_and_runs_choice(self):
+        tray = self.tray_app.tray
+        tray.show_menu.return_value = self.app_mod.MENU_REFRESH
+        self.app_mod.Poller.refresh.reset_mock()
+        self.tray_app._on_tray_event("context_menu", 10, 20)
+        tray.show_menu.assert_called_once()
+        self.assertEqual(self.app_mod.Poller.refresh.call_count, 3)
+
+    def test_toggle_token_saves_config_and_refetches(self):
+        self.app_mod.Poller.refresh.reset_mock()
+        self.tray_app.handle_menu(11)  # Codex
+        self.assertEqual(self.tray_app.token_set, {"codex", "grok"})
+        self.assertEqual(config.load_token_sources({"codex", "grok", "claude"}, self.cfg), {"codex", "grok"})
+        self.app_mod.Poller.refresh.assert_called_once_with("codex")
+        self.tray_app.handle_menu(12)  # Grok 關掉
+        self.assertEqual(self.tray_app.token_set, {"codex"})
+
+    def test_claude_requires_confirmation(self):
+        with mock.patch.object(self.tray_app, "confirm_claude_token", return_value=False):
+            self.tray_app.handle_menu(13)
+        self.assertNotIn("claude", self.tray_app.token_set)
+        with mock.patch.object(self.tray_app, "confirm_claude_token", return_value=True):
+            self.tray_app.handle_menu(13)
+        self.assertIn("claude", self.tray_app.token_set)
+        self.tray_app.handle_menu(13)  # 關掉不用再確認
+        self.assertNotIn("claude", self.tray_app.token_set)
+
+    def test_startup_and_quit(self):
+        self.tray_app.handle_menu(self.app_mod.MENU_STARTUP)
+        self.app_mod.startup.enable.assert_called_once_with()
+        with mock.patch.object(self.app_mod.QApplication, "quit") as quit_:
+            self.tray_app.handle_menu(self.app_mod.MENU_QUIT)
+        quit_.assert_called_once()
+
+    def test_loading_shows_brand_icon(self):
+        from ai_quota_tray import icon
+        png = self.tray_app.tray.set_icon.call_args_list[0].args[0]
+        self.assertEqual(png, icon.brand_png(16))
 
 
 if __name__ == "__main__":

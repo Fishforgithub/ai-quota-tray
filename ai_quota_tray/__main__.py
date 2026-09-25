@@ -1,6 +1,8 @@
 """命令列入口。
 
-    python -m ai_quota_tray tray --token codex,grok      # 系統匣常駐（需要 PySide6、Pillow）
+    python -m ai_quota_tray tray                         # 系統匣常駐（需要 PySide6、Pillow）
+    python -m ai_quota_tray tray --token codex,grok      # 同上，並把 token 來源存進設定
+                                                         # （之後改用右鍵選單切換）
 
 probe：抓一次各家額度，輸出標準化 JSON（token 已遮罩）。
 
@@ -33,12 +35,13 @@ def main(argv: list[str] | None = None) -> int:
                         "⚠️ claude 的 token 來源有 Consumer ToS 風險")
     p.add_argument("--raw", action="store_true", help="附上原始回傳（已遮罩）")
     t = sub.add_parser("tray", help="系統匣常駐")
-    t.add_argument("--token", default="", help="同 probe --token")
+    t.add_argument("--token", default=None,
+                   help="同 probe --token，並存進 config.json；不給就沿用設定（右鍵選單可改）")
     t.add_argument("--debug", action="store_true", help="印出系統匣事件與每次抓取結果")
     t.add_argument("--log", metavar="FILE", help="log 寫到檔案（pythonw／打包版沒有主控台）")
     args = parser.parse_args(argv)
 
-    token_set = {s.strip() for s in args.token.split(",") if s.strip()}
+    token_set = {s.strip() for s in (args.token or "").split(",") if s.strip()}
     unknown = token_set - set(ALL)
     if unknown:
         parser.error(f"--token 不認得：{', '.join(sorted(unknown))}")
@@ -49,8 +52,9 @@ def main(argv: list[str] | None = None) -> int:
         logging.basicConfig(level=logging.DEBUG if args.debug else logging.WARNING,
                             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
                             **({"filename": args.log, "encoding": "utf-8"} if args.log else {}))
+        logging.getLogger("PIL").setLevel(logging.INFO)  # --debug 時 Pillow 會逐塊印 PNG 解碼
         from .app import run  # 延後 import：probe 不需要裝 PySide6
-        return run(token_set)
+        return run(token_set if args.token is not None else None)
 
     now = utcnow()
     states = [fetch_one(n, n in token_set, now) for n in (args.provider or list(ALL))]

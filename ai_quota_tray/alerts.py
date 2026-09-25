@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
+from .config import data_dir
 from .icon import RED_BELOW
 from .model import DISPLAY_NAME, OK, STALE, ProviderState, format_countdown, iso, parse_time
 
@@ -21,9 +21,7 @@ MAX_KEYS = 200
 
 
 def state_path() -> Path:
-    # MSIX 下 %LOCALAPPDATA% 會被重導到套件目錄，一樣能用（CLAUDE.md §5）
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    return Path(base) / "ai-quota-tray" / "state.json"
+    return data_dir() / "state.json"
 
 
 def alert_key(name: str, label: str, resets_at: datetime | None) -> str:

@@ -14,16 +14,17 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "AiQuotaTray"
 
 
-def command_line(token_set: set[str]) -> str:
-    """重現目前這份程式的啟動方式，但一律不開主控台（pythonw）。"""
+def command_line() -> str:
+    """重現目前這份程式的啟動方式，但一律不開主控台（pythonw）。
+
+    不帶 --token：token 來源存在 config.json（右鍵選單切換），帶了反而會在每次開機蓋掉選單的選擇。
+    """
     if getattr(sys, "frozen", False):  # PyInstaller 打包版
         args = [sys.executable, "tray"]
     else:
         exe = Path(sys.executable)
         pythonw = exe.with_name("pythonw.exe")
         args = [str(pythonw if pythonw.exists() else exe), "-m", "ai_quota_tray", "tray"]
-    if token_set:
-        args += ["--token", ",".join(sorted(token_set))]
     return subprocess.list2cmdline(args)
 
 
@@ -40,8 +41,8 @@ def is_enabled() -> bool:
     return registered_command() is not None
 
 
-def enable(token_set: set[str]) -> str:
-    cmd = command_line(token_set)
+def enable() -> str:
+    cmd = command_line()
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, cmd)
     return cmd

@@ -14,7 +14,8 @@ python -m venv .venv && .venv\Scripts\pip install -e .   # PySide6-Essentials + 
 .venv\Scripts\python -m ai_quota_tray probe                     # 只用不碰 token 的來源
 .venv\Scripts\python -m ai_quota_tray probe --token codex,grok  # 這幾家改用 token 來源（API 失敗會退回檔案來源）
 .venv\Scripts\python -m ai_quota_tray probe --raw               # 附原始回傳（token/姓名/email/id/UUID 已遮罩）
-.venv\Scripts\python -m ai_quota_tray tray --token codex,grok --debug   # 系統匣常駐（pythonw 可免主控台；--log FILE 寫檔）
+.venv\Scripts\python -m ai_quota_tray tray --debug              # 系統匣常駐（pythonw 可免主控台；--log FILE 寫檔）
+.venv\Scripts\python -m ai_quota_tray tray --token codex,grok   # 同上，並把 token 來源寫進 config.json（之後用右鍵選單改）
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\AiQuotaTray\AiQuotaTray.exe（onedir，約 88 MB）
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
@@ -22,7 +23,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`net.py`（urllib GET，401 或非 HTML 的 403 → `AuthExpired`）、`providers/{claude,codex,grok}.py`（各自 `fetch(use_token, now)`；`providers.fetch_one` 把例外收斂成該家 `error`）、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`（卡片定位純計算）、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
 - probe **只用標準函式庫**；`requires-python >= 3.11`。
 - **P2 與 §4 的差異**：系統匣走 **ctypes** 而不是 pywin32（pywin32 沒包 `Shell_NotifyIconGetRect`，VERSION_4 的 union 也難填）。右鍵選單用原生 `TrackPopupMenu`（先 `SetForegroundWindow`，否則點外面不會關）。收回呼訊息的是隱藏的**頂層**視窗、不是 message-only（`TaskbarCreated` 只廣播給頂層視窗，Explorer 重啟會自動重新登錄圖示）。對該視窗送 `WM_CLOSE` ＝ 正常結束（會 `NIM_DELETE`，不留殘影）。單一實例用具名 mutex `Local\AiQuotaTray.SingleInstance`。
-- 圖示：所有視窗最低剩餘 %，無條件捨去；< 10 紅、< 30 黃、其餘綠；沒資料灰「–」、全部壞掉灰「!」。szTip 有填（給螢幕閱讀器），但不設 `NIF_SHOWTIP`，所以不會跳原生 tooltip。
+- 圖示：所有視窗最低剩餘 %，無條件捨去；< 10 紅、< 30 黃、其餘綠；**剛啟動還沒資料時顯示品牌圖示**、全部壞掉灰「!」。品牌圖示 `ai_quota_tray/assets/app.png`（512px）／`app.ico`（16–256）是業主設計的（原圖 `D:\FISH\Desktop\ai-quota.png`，裁掉四周光暈：alpha > 128 的方塊外留 3%）；也用在 exe 圖示、通知大圖示（`NIIF_USER | NIIF_LARGE_ICON`）、Qt 對話框。szTip 有填（給螢幕閱讀器），但不設 `NIF_SHOWTIP`，所以不會跳原生 tooltip。
 - ⚠️ **Windows 11 預設把新圖示收進溢位區（`^`）**，此時 `Shell_NotifyIconGetRect` 回的是 `^` 箭頭的位置（2026-09-25 實測），卡片就會出現在 `^` 上方。使用者要自己在「設定 → 個人化 → 工作列 → 其他系統匣圖示」打開。
 - ⚠️ DPI：Qt 6 預設 Per-Monitor v2，系統匣回呼座標、`GetRect` 都是實體像素；**外部測試腳本沒設 DPI aware 的話拿到的是虛擬化座標**（125% 時差 1.25 倍）。
 - 已驗證（P2）：啟動→三家抓取→圖示登錄、右鍵選單「立即刷新」會重抓、`WM_CLOSE` 正常退出（exit 0、視窗銷毀）。
@@ -31,9 +32,11 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - **P4**：
   - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後全部重抓。
   - 通知（`alerts.py`）：剩餘 < 10%（＝圖示變紅）時用 `NIF_INFO` 發 toast（`NIIF_RESPECT_QUIET_TIME`），點通知開卡片。**每個視窗每個重置週期只一次**：鍵＝`provider|label|resets_at`，記在 `%LOCALAPPDATA%\ai-quota-tray\state.json`（重開不重複；重置時間過了自動清掉；壞檔直接覆寫）。只看 `ok`/`stale`，失敗後保留的舊數字不發。
-  - 開機啟動（`startup.py`）：右鍵選單「開機時啟動」切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入的是**目前這份的啟動方式**（venv → `pythonw.exe -m ai_quota_tray tray --token …`；打包版 → `AiQuotaTray.exe tray --token …`），不含 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
+  - 右鍵選單：立即刷新／Codex、Grok、Claude 各自「使用 API」（打勾＝用 token 來源）／開機時啟動／關閉。token 來源存在 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `token_sources`（`config.py`，預設全部不用），切換後立即重抓該家；開 Claude 會先跳 ToS 警告對話框、預設按鈕是「否」。命令列 `--token` 只是把值寫進 config（給第一次設定用）。
+  - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入的是**目前這份的啟動方式**（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），**刻意不帶 `--token`**（帶了每次開機都會蓋掉選單的選擇），也不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
   - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（但沒有 `--token`，Grok 會是 `disabled`）。
-  - 已驗證：unittest 45 過；實跑發出 Grok 8% 通知並寫進 state.json；打包版實跑三家抓取＋卡片截圖。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
+  - 已驗證：unittest 52 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
+  - 🔴 教訓（2026-09-25）：P4 用「字串替換」插入 `_context_menu` 時比對到**第一個** `def shutdown`（`Poller` 的），方法進了錯的類別 → 右鍵一按 `AttributeError`（被 `_proc` 吞掉只寫 log，畫面上就是「右鍵沒反應」），當時的測試都沒走到選單。改 `app.py` 要用能看到上下文的編輯方式，選單相關改動要跑 `MenuTest`。
 - 狀態值比 §2 多一個 `disabled`（來源沒啟用，例如 Grok 沒給 `--token`）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 

@@ -22,6 +22,11 @@ COLORS = {
 _FONT_DIR = Path(r"C:\Windows\Fonts")
 _SUPERSAMPLE = 4
 
+# 使用者設計的 App 圖示（原圖 D:\FISH\Desktop\ai-quota.png，裁掉四周光暈後縮成 512px）
+ASSETS = Path(__file__).with_name("assets")
+BRAND_PNG = ASSETS / "app.png"
+_brand_cache: dict[int, bytes] = {}
+
 
 @dataclass(frozen=True)
 class IconSpec:
@@ -49,6 +54,20 @@ def summarize(states: list[ProviderState]) -> IconSpec:
 def level_for(remaining: float) -> str:
     """剩餘 % → 顏色等級。圖示與卡片進度條共用。"""
     return "red" if remaining < RED_BELOW else "yellow" if remaining < YELLOW_BELOW else "green"
+
+
+def is_loading(spec: IconSpec) -> bool:
+    """還沒有任何資料（剛啟動）→ 系統匣先顯示品牌圖示。全部失敗的「!」不算。"""
+    return spec.text == "–"
+
+
+def brand_png(size: int) -> bytes:
+    """品牌圖示縮到指定尺寸的 PNG（快取，縮圖很慢）。"""
+    if size not in _brand_cache:
+        out = io.BytesIO()
+        Image.open(BRAND_PNG).convert("RGBA").resize((size, size), Image.LANCZOS).save(out, "PNG")
+        _brand_cache[size] = out.getvalue()
+    return _brand_cache[size]
 
 
 def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
