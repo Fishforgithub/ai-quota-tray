@@ -68,21 +68,8 @@ STRINGS: dict[str, tuple[str, str]] = {
                                     "Uses the official agy CLI; sign in with agy first."),
     "settings.source.copilot": ("透過官方 SDK 查詢；請先執行 copilot login 登入。",
                                 "Uses the official SDK; sign in with copilot login first."),
-    "settings.help_toggle": ("各服務的資料來源", "About service data sources"),
-    "settings.help": (
-        "・Claude Code：讀取本機紀錄。<br>"
-        "・Codex：透過官方 App Server 查詢；失敗時退回本機紀錄。<br>"
-        "・Antigravity：透過官方 agy CLI 查詢；未登入請先執行 agy。<br>"
-        "・Copilot：透過官方 SDK 查詢；請先執行 <code>copilot login</code> 登入。",
-        "・Claude Code: reads local records.<br>"
-        "・Codex: queries the official App Server and falls back to local records on failure.<br>"
-        "・Antigravity: queries the official agy CLI; run agy to sign in if needed.<br>"
-        "・Copilot: queries the official SDK; sign in with <code>copilot login</code> first.",
-    ),
     "settings.language": ("語言", "Language"),
     "settings.lang.auto": ("跟隨系統", "System default"),
-    "settings.yes": ("是", "Yes"),
-    "settings.no": ("否", "No"),
     "settings.cancel": ("取消", "Cancel"),
     "settings.save": ("儲存", "Save"),
     "settings.promo_eyebrow": ("廣告 · FISH-ZERO 自家 App", "Ad · A FISH-ZERO app"),

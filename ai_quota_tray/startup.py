@@ -15,9 +15,7 @@ VALUE_NAME = "AiQuotaTray"
 
 
 def command_line() -> str:
-    """重現目前這份程式的啟動方式，但一律不開主控台（pythonw）。
-
-    """
+    """重現目前這份程式的啟動方式，但一律不開主控台（pythonw）。"""
     if getattr(sys, "frozen", False):  # PyInstaller 打包版
         args = [sys.executable, "tray"]
     else:

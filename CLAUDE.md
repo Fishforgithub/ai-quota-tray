@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`codex_app_server.py`（Codex 官方 stdio 協定，登入由 Codex CLI 管理）、`providers/{claude,codex,antigravity,copilot}.py`、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
 - 更新策略：啟動後只有 Claude 會讀本機快取，之後每 2 分鐘重讀；Codex、Antigravity、Copilot 不在背景定時呼叫服務，僅開啟卡片時按最短間隔（Codex 2 分鐘、其餘 5 分鐘）查詢，或右鍵「立即刷新」強制查詢。每分鐘只在本機檢查雲端快照是否過期。低額度通知因此要等查看或手動刷新後才會收到。
 - Copilot 的 SDK `reset_date` 在此環境回傳過去日期；若無有效的未來日期，有限額度依 GitHub 官方規則推算下一個月 1 日 00:00 UTC 重置，卡片倒數前顯示「約」／`~` 以區分推算值。
-- probe **只用標準函式庫**；`requires-python >= 3.11`。
+- probe 除了 Copilot 以外只用標準函式庫（Copilot 要 `github-copilot-sdk`，延後到查詢時才 import，沒裝時只有 Copilot 那一家變 error）；`requires-python >= 3.11`。
 - **P2 與 §4 的差異**：系統匣走 **ctypes** 而不是 pywin32（pywin32 沒包 `Shell_NotifyIconGetRect`，VERSION_4 的 union 也難填）。右鍵選單用原生 `TrackPopupMenu`（先 `SetForegroundWindow`，否則點外面不會關）。收回呼訊息的是隱藏的**頂層**視窗、不是 message-only（`TaskbarCreated` 只廣播給頂層視窗，Explorer 重啟會自動重新登錄圖示）。對該視窗送 `WM_CLOSE` ＝ 正常結束（會 `NIM_DELETE`，不留殘影）。單一實例用具名 mutex `Local\AiQuotaTray.SingleInstance`。
 - 工作列圖示：啟動時呼叫 `SetCurrentProcessExplicitAppUserModelID("AiQuotaTray.App")`（`win32tray.set_app_id`），否則 venv 版的視窗會被歸到 `pythonw.exe`、工作列顯示 Python 圖示。
 - 💡 模擬按選單（PostMessage）開出的視窗會被 Windows 擋在後面（前景鎖，工作列按鈕閃爍）；真人點選單才有前景權。測試腳本要截被擋住的視窗用 `PrintWindow(hwnd, dc, PW_RENDERFULLCONTENT)`。

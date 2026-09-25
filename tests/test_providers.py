@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from ai_quota_tray import wincred
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE, AuthExpired,
                                  label_for_duration, mask_secrets, parse_time, to_float)
 from ai_quota_tray.providers import ALL, antigravity, claude, codex, copilot, fetch_one
@@ -274,19 +273,6 @@ class AntigravityTest(unittest.TestCase):
             state = antigravity.fetch(use_token=True, now=NOW)
         self.assertEqual(state.status, AUTH_EXPIRED)
         self.assertIn("未登入", state.error)
-
-
-class WinCredTest(unittest.TestCase):
-    def test_decode_blob(self):
-        self.assertEqual(wincred.decode_blob(b"gho_abc"), "gho_abc")
-        self.assertEqual(wincred.decode_blob("gho_abc".encode("utf-16-le")), "gho_abc")
-        self.assertEqual(wincred.decode_blob(b"go-keyring-base64:Z2hvX2FiYw=="), "gho_abc")
-        self.assertEqual(wincred.decode_blob(b'{"access_token": "x"}'), '{"access_token": "x"}')
-        self.assertIsNone(wincred.decode_blob(b""))
-        self.assertIsNone(wincred.decode_blob(b"\xff\xfe\x00\x01\x02"))
-
-    def test_missing_target_is_none(self):
-        self.assertIsNone(wincred.read_generic("ai-quota-tray:unittest:does-not-exist"))
 
 
 class ProbeTest(unittest.TestCase):
