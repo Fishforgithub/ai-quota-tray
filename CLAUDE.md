@@ -74,8 +74,11 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
    - 通知別吵：每次啟動最多提示一次（拿不到新版版號，無法「每個版本一次」）。查詢頻率先定啟動時＋每 6 小時（desk-pet 是 25 分鐘，這個 App 不需要那麼勤）。
    - 🔴 **隱私權政策與商店文案要一起改**：現在寫「App 自己不會連到任何伺服器」，檢查更新會連 Microsoft Store 的服務（只問有沒有更新、不送個人資料）。fish-zero-web 的兩份政策、`docs/site/` 副本、`docs/store-listing.md` 的說明與 runFullTrust 說明都要補一句。
    - 🔴 **這功能要等帶著它的那一版裝到使用者手上，才能提示再下一版**：v0.1 的使用者只能靠 Store 自己的自動更新升到 v0.2。
-2. **xAI（Grok）**：看回信決定（見上方 📨）。
-3. ✅ 已先做（2026-09-26，會跟 v0.2 一起出去）：設定視窗的語言下拉改成整塊圓角＋自己的 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`），原本右邊是 Windows 原生的方塊下拉鈕、凸出一截；寬度改成依內容（寫死 108px 時英文「System default」被切掉）。
+2. **設定視窗底部加「隱私權政策」「官網」連結＋無隸屬聲明**（業主 2026-09-26 同意）：放在版號旁邊，兩個小連結分別開 `https://fish-zero.com/aiusagemeter-privacy`／`https://fish-zero.com/aiusagemeter`（英文介面開 `/en/…`），再一行小字「非 Anthropic／OpenAI／GitHub／Google 官方產品」（中英文走 `i18n.py`）。
+   Store 政策 7.20 的 10.5.1 只要求 Partner Center 填政策網址，App 內連結是「may」——做這個不是為了過審，而是：加回 Grok（讀 token 的例外）時使用者要點得到政策、App 畫面直接顯示各家產品名要有無隸屬聲明、使用者找得到支援信箱。
+   ⚠️ 設定視窗目前的外部連結只有桌寵橫幅（`STORE_URL`），多了這兩個要一起寫進隱私權政策 §3「其他連線」，也要進 `store_shots.py` 重拍的截圖。
+3. **xAI（Grok）**：看回信決定（見上方 📨）。
+4. ✅ 已先做（2026-09-26，會跟 v0.2 一起出去）：設定視窗的語言下拉改成整塊圓角＋自己的 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`），原本右邊是 Windows 原生的方塊下拉鈕、凸出一截；寬度改成依內容（寫死 108px 時英文「System default」被切掉）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
