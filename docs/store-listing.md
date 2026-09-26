@@ -21,7 +21,7 @@
 | 產品型別 | **MSIX app**（已建立，不是 game） | — |
 | 類別 | **開發人員工具**（Developer tools），子類別留空 | 使用者就是用 AI 程式開發工具的人 |
 | 隱私權：會存取、收集或傳送個人資訊嗎？ | **是**＋上面的政策 URL | App 會讀 Codex 的本機紀錄檔，檔案裡含對話內容（雖然只取額度欄位）。答「否」在審查追問時說不清楚，答「是」並附政策最安全 |
-| 定價 | 免費、全球市場 | 沒有內購、沒有廣告 |
+| 定價 | 免費、全球市場 | 沒有內購、沒有第三方廣告（設定視窗底部有一個標示「廣告」的自家 App 推廣橫幅，見 §4） |
 | 產品宣告 | 全部**不勾**；若有預設勾選「可用 Windows 錄製與廣播此產品的片段」要**取消**（那項只給遊戲） | desk-pet 經驗 |
 | 系統需求 | 最低需求可不填（套件已宣告 Windows 10 1903、x64） | — |
 
@@ -51,7 +51,7 @@
 > When any limit drops below 10%, you get one Windows notification, and only one per reset period. If a lookup fails or the numbers are out of date, that section turns grey and shows how old it is, so old numbers are never passed off as current ones.
 >
 > Private by design
-> No server of its own, no analytics, no advertising, no account. Nothing is sent to the developer.
+> No server of its own, no analytics, no third-party ads, no account. Nothing is sent to the developer. The only ad is a small banner for another app by the same developer at the bottom of the Settings window.
 >
 > Tip: Windows 11 may place new tray icons in the hidden icons area (^). Drag the AI Usage Meter icon onto the taskbar so it is always one hover away.
 >
@@ -66,7 +66,7 @@
 5. Uses each tool's official interface and your existing sign-in
 6. One notification when a limit drops below 10%, once per reset period
 7. Grey, time-stamped sections when numbers are out of date
-8. No server, no analytics, no ads, no account
+8. No server, no analytics, no third-party ads, no account
 9. Starts with Windows (optional)
 10. English and Traditional Chinese interface
 
@@ -101,7 +101,7 @@
 > 任何一個額度剩不到 10%，就用 Windows 通知提醒一次，同一個重置週期不會重複提醒。查詢失敗或資料過時，那一塊會變灰並標示是多久以前的數字，不會把舊數字當成現在的。
 >
 > 隱私優先
-> 沒有自己的伺服器、沒有分析追蹤、沒有廣告，也不需要註冊帳號。不會把任何資料傳給開發者。
+> 沒有自己的伺服器、沒有分析追蹤、沒有第三方廣告，也不需要註冊帳號。不會把任何資料傳給開發者。唯一的廣告是設定視窗底部一個推廣開發者另一款 App 的小橫幅。
 >
 > 小提醒：Windows 11 可能會把新的系統匣圖示收進隱藏區（^）。把 AI Usage Meter 的圖示拖到工作列上，就能隨時看到。
 >
@@ -116,7 +116,7 @@
 5. 透過各工具的官方介面與你原本的登入查詢
 6. 額度剩不到 10% 時通知一次，每個重置週期只通知一次
 7. 資料過時會變灰並標示時間
-8. 沒有伺服器、沒有分析追蹤、沒有廣告、不需要帳號
+8. 沒有伺服器、沒有分析追蹤、沒有第三方廣告、不需要帳號
 9. 可設定開機自動啟動
 10. 繁體中文／English 介面
 
@@ -128,6 +128,7 @@
 
 - **產品名稱、簡短標題不放任何一家的產品名**（商標）。說明與功能裡提到 Claude Code 等名稱，是為了說明「相容哪些工具」，並在說明最後加上無隸屬聲明。競品「AI Limits」的商店頁也是這樣寫。
 - **搜尋字詞刻意不放 Claude、Codex、Copilot 等產品名**：用別人的商標當搜尋字詞，審查上風險比放在說明裡高；使用者搜這些字時，說明內文仍可能被比對到（推測）。
+- 🔴 **不寫「沒有廣告」，一律寫「沒有第三方廣告」**：設定視窗底部的桌寵橫幅本身標著「廣告／Ad」（`i18n.py` 的 promo 字串），審核人員一打開設定就看得到，寫「沒有廣告」會自相矛盾（2026-09-26 拍截圖時才發現，隱私權政策與產品頁同日一起改）。
 - **不寫「即時」「隨時更新」**：背景只讀本機紀錄，雲端只在打開卡片時查，寫「即時」會跟隱私權政策與實際行為對不上。
 - **不承諾各家都有 5 小時視窗**：額度結構由各服務決定，文案一律寫「5 小時、每週或每月不同的額度」。
 - 跟直接競品「AI Limits」（會讀取各工具的登入權杖）的差異就是**不碰登入**，所以放在說明第三段與功能第 4、5 條。
@@ -200,7 +201,43 @@
 
 ⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字時，這段要一起改。
 
-## 7. 還沒做
+## 7. 年齡分級（IARC 問卷）
 
-- 截圖（至少 1 張、建議 4 張，`.png`、最小 1366×768；⚠️ 每種語言的截圖要是那個語言的介面，desk-pet 經驗：英文清單配中文截圖會被退件）
-- Store 標誌、IARC 年齡分級問卷
+Partner Center 的「年齡分級」是線上問卷，答完當場產生各地區分級。第一題選產品類型時選**非遊戲的應用程式**（公用程式／生產力那一類，確切選項名稱以問卷畫面為準）。
+照下表誠實作答；**依據欄是為了下次有人問「為什麼這樣答」**。預期結果是全年齡（3+／所有人）（推測，要看問卷實際產生的結果）。
+
+| 題目類別 | 怎麼答 | 依據 |
+|---|---|---|
+| 暴力、血腥 | 無 | App 只顯示用量數字與進度條 |
+| 性內容／裸露 | 無 | — |
+| 粗俗語言 | 無 | 介面文字是固定字串（`i18n.py`）；卡片上的失敗原因可能是各工具回傳的錯誤訊息。都不是使用者產生的內容 |
+| 受管制物質（菸酒毒品） | 無 | — |
+| 賭博／模擬賭博 | 無 | — |
+| 恐怖／驚嚇 | 無 | — |
+| 使用者互動（聊天、分享使用者產生的內容） | **無** | App 沒有任何使用者之間的互動，也沒有帳號 |
+| 分享個人資訊給其他人或第三方 | **無** | 隱私權政策 §1、§3：沒有自己的伺服器，不傳任何資料給開發者或第三方。各官方工具與自家服務之間的查詢不是本 App 在分享 |
+| 分享位置 | 無 | 不取任何位置 |
+| 數位購買（內購） | **無** | 免費、沒有內購、沒有訂閱 |
+| 不受限的網際網路存取 | **無** | App 內沒有瀏覽器；唯一的外部連結是設定視窗底部那個自家 App 橫幅，點了用預設瀏覽器開 Microsoft Store 商品頁（`settings.py` 的 `STORE_URL`） |
+
+⚠️ **政策 11.11 於 2026-09-15 更新（2026-10-22 生效）**：年齡分級要在產品的整個生命週期內維持正確。之後若加了聊天、帳號、內購、內建瀏覽器，要回來重填問卷。
+💡 設定視窗那個「萌寵桌面精靈」橫幅是**自家產品的交叉推廣**，不是第三方廣告網路；問卷若問到廣告，照這個事實回答。
+
+## 8. 截圖與 Store 標誌
+
+**規格**：至少 1 張、最多 10 張，`.png`，最小 1366×768、最大 3840×2160。⚠️ 每種語言的截圖要是那個語言的介面（desk-pet 經驗：英文清單配中文截圖會被退件）；⚠️ 截圖一次只吃一張、每個語言要各傳一次（desk-pet 經驗）。
+
+**已產生**（2026-09-26，`packaging/store_shots.py`，3840×2160）：
+
+| 檔案 | 內容 | 傳到 |
+|---|---|---|
+| `docs/store/shots/zh-TW-1.png`／`en-1.png` | 深色卡片（四家範例資料）＋「每個額度還剩多少，滑鼠移過去就知道」 | 各自語言的清單，放第一張 |
+| `docs/store/shots/zh-TW-2.png`／`en-2.png` | 淺色卡片＋「淺色、深色都好讀」 | 同上 |
+| `docs/store/shots/zh-TW-3.png`／`en-3.png` | 設定視窗（Claude 那列顯示「安裝」）＋「選你用的工具，不用登入、不碰權杖」 | 同上 |
+
+做法：直接用 Qt 畫真的 `Card`／`SettingsDialog` 元件（2 倍解析度），放在漸層背景上加一句說明；**不截桌面**（會拍到業主的視窗與系統匣裡別的 App）。
+資料是示範模式的範例（`demo.sample_states`），但不畫示範模式那行紅字。設定視窗那張強制畫成「還沒安裝 Claude 狀態列擷取」的樣子（新使用者看到的）。
+改到卡片或設定視窗的外觀後，重跑 `.venv\Scripts\python packaging\store_shots.py` 即可（輸出會覆蓋）。
+
+**Store 標誌**（選填）：`docs/store/logo-300.png`（300×300，由 `ai_quota_tray/assets/app.png` 縮小）。不傳的話 Store 用套件裡的圖示。
+**還沒做（選填）**：2:3 海報與 16:9 hero art（desk-pet 有做，這個 App 沒有必要）、系統匣低額度通知的實機截圖（通知是系統畫的，畫不出來，要真的觸發再截）。

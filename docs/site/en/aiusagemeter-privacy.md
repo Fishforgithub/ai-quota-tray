@@ -8,7 +8,7 @@ updated: 2026-09-26
 ---
 
 :::lead
-**AI Usage Meter has no server of its own, collects no personal data, and contains no analytics or advertising.**
+**AI Usage Meter has no server of its own, collects no personal data, and contains no analytics or third-party advertising.**
 It never reads or stores your passwords or sign-in tokens; every usage lookup is handed to the official tool that is already signed in on your computer.
 We, the developer, receive none of your data.
 :::
@@ -56,7 +56,7 @@ In the background, the app only re-reads the local records from section 2 every 
 
 These lookups are made directly between each official tool and its own service, and are covered by that service's own privacy policy. The app only receives the usage numbers (percentage used, reset time, plan name). It never receives or stores your account credentials.
 
-**Other connections**: the bottom of the Settings window shows a banner for another app by the same developer. Only if you click it does your browser open its Microsoft Store page.
+**Other connections**: the bottom of the Settings window shows a banner marked "Ad" that promotes another app by the same developer. It is the only ad in the app; its image is built into the app rather than loaded from the internet, and no third-party advertising code is included. Only if you click it does your browser open its Microsoft Store page.
 
 ## 4. Optional: Claude status line capture
 

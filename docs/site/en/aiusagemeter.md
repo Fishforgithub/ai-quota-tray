@@ -47,7 +47,7 @@ In the background it only reads local records, without using the network. It che
 
 ## Privacy
 
-**No server of its own, no analytics, no advertising, and no personal data collected.** We receive none of your data.
+**No server of its own, no analytics, no third-party advertising, and no personal data collected.** We receive none of your data.
 
 For the details, see the [AI Usage Meter Privacy Policy](/en/aiusagemeter-privacy).
 
