@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
-> ⏸️ **2026-09-26 的狀態**：MSIX 那批改動已在本機 commit（`9528f1b`），**沒有 push**（業主指示）；產品名改成 AI Usage Meter；unittest 126 過。Partner Center 已保留名稱（見上方 MSIX 段），用正式 Identity 打出 `buildmsixAiQuotaTray-0.1.0.0-x64.msix`（47.2 MB，manifest 與 PRI 中英文顯示名稱核對過）；打包時已自動移除舊的佔位 loose registration，本機目前沒有任何註冊。系統匣平常跑的是 `dist\AiQuotaTray\AiQuotaTray.exe`（已含 Claude 安裝按鈕與示範模式）。下一步：（WACK 已 PASS）→ 上架資料（隱私權政策、商店頁、截圖、IARC、runFullTrust 說明、認證注意事項）。
+> ⏸️ **2026-09-26 的狀態**：MSIX 那批改動已在本機 commit（`9528f1b`），**沒有 push**（業主指示）；產品名改成 AI Usage Meter；unittest 128 過；WACK PASS。Partner Center 已保留名稱（見上方 MSIX 段），用正式 Identity 打出 `build\msix\AiQuotaTray-0.1.0.0-x64.msix`（47.2 MB，manifest 與 PRI 中英文顯示名稱核對過）；打包時已自動移除舊的佔位 loose registration，本機目前沒有任何註冊。系統匣平常跑的是 `dist\AiQuotaTray\AiQuotaTray.exe`（已含 Claude 安裝按鈕與示範模式）。下一步：（WACK 已 PASS）→ 上架資料（隱私權政策、商店頁、截圖、IARC、runFullTrust 說明、認證注意事項）。
 
 1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
 2. 上線版**不能由 tray 直接碰 token**（§1 原則 5、§5 政策）：設定視窗已沒有來源切換，Grok 已停用；Codex 走官方 App Server、Copilot 走官方 SDK、Antigravity 走官方 agy CLI。須驗證 MSIX 套件呼叫外部 CLI 與 SDK runtime 的行為。
