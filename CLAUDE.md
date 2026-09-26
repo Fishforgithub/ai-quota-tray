@@ -70,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 > 📨 **xAI（Grok）詢問中**：業主 2026-09-26 12:44 寄信給 `sales@x.ai`，問第三方 App 能不能讀 Grok Build CLI 的本機 token、呼叫 `cli-chat-proxy.grok.com/v1/billing` 等端點來顯示使用者自己的用量，或有沒有官方介面可用。業主決定：**回覆 OK 才在下一版加回來**。⚠️ 信裡附的 `blob/main/.../providers/grok.py` 已經 404（P5 `236e126` 刪掉了）；對方要看程式碼時改給固定版本 `https://github.com/Fishforgithub/ai-quota-tray/blob/7376facef447ea03969deed62bfe4aaf9a6a30f2/ai_quota_tray/providers/grok.py`（實測 200）。信裡的產品名是舊的 AI Quota Tray。🔴 **加回來不只是改程式**：隱私權政策、商店說明與功能（「不讀取、不保存登入權杖」）、runFullTrust 說明（「reads no tokens」）、認證注意事項、產品頁都寫死了「不碰 token」，Grok 若仍是讀 token 的做法，這些都要改成「Grok 例外、需使用者自行啟用」並重新送審；若 xAI 給的是官方 API／CLI 指令，就能維持「不碰 token」的說法。
 
-1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
+1. ~~先決定散佈管道~~ ✅ 2026-09-26 定案：**Microsoft Store**，公司同事也等 Store 版（業主決定不先發可攜版 zip：未簽章 exe 會跳 SmartScreen、可能被公司政策擋，且開機啟動會記住解壓路徑）。個人版 `dist\AiQuotaTray\` 只給業主自己用；要發給別人的話記得是**整個資料夾**（PyInstaller onedir），不是只有 exe。
 2. 上線版**不能由 tray 直接碰 token**（§1 原則 5、§5 政策）：設定視窗已沒有來源切換，Grok 已停用；Codex 走官方 App Server、Copilot 走官方 SDK、Antigravity 走官方 agy CLI。須驗證 MSIX 套件呼叫外部 CLI 與 SDK runtime 的行為。
 3. ~~開機啟動改 `windows.startupTask`~~ ✅ 2026-09-26 已做並在 loose registration 實測（見上）。
 4. ~~驗證 `%LOCALAPPDATA%` 重導與套件內讀 `.claude`／`.codex`~~ ✅ 讀取正常；修改既有設定檔會寫回真正的位置、與個人版共用（見上）。
