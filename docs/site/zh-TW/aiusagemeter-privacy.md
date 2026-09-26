@@ -8,9 +8,7 @@ updated: 2026-09-26
 ---
 
 :::lead
-**AI Usage Meter 沒有自己的伺服器，不收集個人資料，也沒有分析追蹤或廣告。**
-它不讀取、不保存你的密碼或登入權杖；查詢額度一律交給你電腦上已經登入的官方工具。
-我們（開發者）收不到你的任何資料。
+**AI Usage Meter 沒有自己的伺服器，不收集個人資料，也沒有分析追蹤或廣告。**它不讀取、不保存你的密碼或登入權杖；查詢額度一律交給你電腦上已經登入的官方工具。我們（開發者）收不到你的任何資料。
 :::
 
 本政策適用於以下應用程式：
@@ -18,8 +16,7 @@ updated: 2026-09-26
 - Microsoft Store 產品識別碼：`9PLDWKRFDGDC`
 - 套件名稱：`Fish-Zero.AIUsageMeter`
 
-AI Usage Meter 是獨立開發的第三方工具，與 Anthropic、OpenAI、GitHub、Google 沒有隸屬或合作關係。
-下文提到的產品名稱屬於各自的權利人，只用來說明本 App 會讀取哪個工具的資料。
+AI Usage Meter 是獨立開發的第三方工具，與 Anthropic、OpenAI、GitHub、Google 沒有隸屬或合作關係。下文提到的產品名稱屬於各自的權利人，只用來說明本 App 會讀取哪個工具的資料。
 
 ## 1. 我們不做的事
 
@@ -43,7 +40,7 @@ AI Usage Meter 是獨立開發的第三方工具，與 Anthropic、OpenAI、GitH
 
 ## 3. 什麼時候會連上網路
 
-**本 App 自己不會連到任何伺服器。** 需要即時數字時，它會在背景啟動你已安裝的官方工具，由那個工具用**你原本的登入**向它自己的服務查詢額度，再把結果交給本 App 顯示。
+**本 App 自己不會連到任何伺服器。**需要即時數字時，它會在背景啟動你已安裝的官方工具，由那個工具用**你原本的登入**向它自己的服務查詢額度，再把結果交給本 App 顯示。
 
 | 服務 | 啟動的官方工具 | 什麼時候 |
 |---|---|---|
@@ -76,11 +73,9 @@ Claude Code 不會自己把額度寫進檔案，所以設定視窗的 Claude 那
 | 低額度通知紀錄（哪個額度在哪個重置週期已經通知過，避免重複通知） | 同上，`state.json` |
 | Claude 狀態列擷取（僅在你安裝時） | 見第 4 節 |
 
-從 Microsoft Store 安裝時，前兩項會存在 Windows 為本 App 保留的資料夾，**移除 App 時由 Windows 自動刪除**。
-第 4 節的檔案放在 Claude Code 自己的資料夾裡，移除 App 不會刪除它們（這樣 Claude Code 的狀態列才不會突然壞掉）；請在移除 App **之前**先到設定按「移除」。
+從 Microsoft Store 安裝時，前兩項會存在 Windows 為本 App 保留的資料夾，**移除 App 時由 Windows 自動刪除**。第 4 節的檔案放在 Claude Code 自己的資料夾裡，移除 App 不會刪除它們（這樣 Claude Code 的狀態列才不會突然壞掉）；請在移除 App **之前**先到設定按「移除」。
 
-「開機時啟動」只是向 Windows 登記啟動項目，可隨時在右鍵選單或 Windows 設定中關閉。
-剩餘額度偏低時的提醒使用 Windows 本機通知，不經過任何伺服器。
+「開機時啟動」只是向 Windows 登記啟動項目，可隨時在右鍵選單或 Windows 設定中關閉。剩餘額度偏低時的提醒使用 Windows 本機通知，不經過任何伺服器。
 
 ## 6. 兒童隱私
 
@@ -96,7 +91,6 @@ Claude Code 不會自己把額度寫進檔案，所以設定視窗的 Claude 那
 
 本政策如有變更，會更新本頁的「生效日」。
 
-有任何隱私相關問題，請寄信至
-[hello@fish-zero.com](mailto:hello@fish-zero.com)。
+有任何隱私相關問題，請寄信至[hello@fish-zero.com](mailto:hello@fish-zero.com)。
 
 開發者網站：[fish-zero.com](https://fish-zero.com/)
