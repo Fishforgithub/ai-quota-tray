@@ -58,6 +58,11 @@ def load_demo(path: Path | None = None) -> bool:
     return (_load(path or config_path()) or {}).get("demo") is True
 
 
+def load_welcomed(path: Path | None = None) -> bool:
+    """第一次啟動的歡迎通知跳過了沒（app.run）。只跳一次，之後靠「再啟動一次就打開卡片」。"""
+    return (_load(path or config_path()) or {}).get("welcomed") is True
+
+
 def save(path: Path | None = None, **fields: set[str] | str | bool) -> None:
     """更新指定欄位，保留其他欄位；壞檔直接覆寫。例：save(enabled=..., language="en")。"""
     path = path or config_path()

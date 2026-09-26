@@ -96,6 +96,7 @@ _sig(user32.TrackPopupMenu, w.BOOL, w.HMENU, w.UINT, ctypes.c_int, ctypes.c_int,
 _sig(user32.DestroyMenu, w.BOOL, w.HMENU)
 _sig(user32.SetForegroundWindow, w.BOOL, w.HWND)
 _sig(user32.PostMessageW, w.BOOL, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
+_sig(user32.FindWindowW, w.HWND, w.LPCWSTR, w.LPCWSTR)
 _sig(user32.GetCursorPos, w.BOOL, ctypes.POINTER(w.POINT))
 _sig(user32.GetWindowRect, w.BOOL, w.HWND, ctypes.POINTER(w.RECT))
 _sig(user32.GetDpiForSystem, w.UINT)
@@ -154,6 +155,18 @@ def acquire_single_instance(name: str) -> object | None:
     return handle
 
 
+# 已在執行時再啟動一次：新的那份送這個訊息給舊的那份，讓它打開卡片（不然畫面上什麼都沒發生）
+ACTIVATE_MESSAGE = "AiQuotaTray.Activate"
+
+
+def activate_running_instance() -> bool:
+    """找到正在跑的那份的隱藏視窗並請它打開卡片；找不到（例如它還在啟動）回 False。"""
+    hwnd = user32.FindWindowW(TrayIcon.CLASS_NAME, None)
+    if not hwnd:
+        return False
+    return bool(user32.PostMessageW(hwnd, user32.RegisterWindowMessageW(ACTIVATE_MESSAGE), 0, 0))
+
+
 def hicon_from_png(png: bytes, size: int) -> int:
     # Vista 起圖示資源可以直接是 PNG，CreateIconFromResourceEx 看得懂
     buf = (ctypes.c_ubyte * len(png)).from_buffer_copy(png)
@@ -169,7 +182,7 @@ MenuItem = tuple[int | None, str, bool, bool]
 
 class TrayIcon:
     """on_event(kind, x, y)：kind 是 popup_open / popup_close / context_menu / select，
-    balloon_click（點了通知）、resume（睡眠喚醒），
+    balloon_click（點了通知）、resume（睡眠喚醒）、activate（又被啟動一次，見 activate_running_instance），
     以及 quit（有人對隱藏視窗送 WM_CLOSE，例如安裝程式要關掉我們）。
     座標是實體像素（Qt 6 預設 Per-Monitor DPI aware v2）。"""
 
@@ -183,6 +196,7 @@ class TrayIcon:
         self._hinst = kernel32.GetModuleHandleW(None)
         self._wndproc = WNDPROC(self._proc)  # 要留參考，不然會被 GC 掉
         self._taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
+        self._activate = user32.RegisterWindowMessageW(ACTIVATE_MESSAGE)
 
         wc = WNDCLASSEXW(cbSize=ctypes.sizeof(WNDCLASSEXW), lpfnWndProc=self._wndproc,
                          hInstance=self._hinst, lpszClassName=self.CLASS_NAME)
@@ -235,18 +249,23 @@ class TrayIcon:
         if old:
             user32.DestroyIcon(old)
 
-    def show_balloon(self, title: str, text: str) -> None:
-        """Windows 10/11 會顯示成 toast 通知；勿擾模式（quiet time）時不打擾。"""
+    def show_balloon(self, title: str, text: str, respect_quiet_time: bool = True) -> None:
+        """Windows 10/11 會顯示成 toast 通知；預設在 quiet time 時不打擾。
+
+        quiet time 是新使用者第一次登入後的那一小時（全新的電腦、例如審核用的 VM 就會碰到）。
+        只有「回應使用者自己的動作」的通知才傳 False（例如第一次啟動的歡迎訊息）。
+        """
         if not self._added:
             return
         nid = self._data(NIF_INFO)
         nid.szInfoTitle = title[:63]
         nid.szInfo = text[:255]
+        quiet = NIIF_RESPECT_QUIET_TIME if respect_quiet_time else 0
         if self._balloon_hicon:
             nid.hBalloonIcon = self._balloon_hicon
-            nid.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON | NIIF_RESPECT_QUIET_TIME
+            nid.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON | quiet
         else:
-            nid.dwInfoFlags = NIIF_WARNING | NIIF_RESPECT_QUIET_TIME
+            nid.dwInfoFlags = NIIF_WARNING | quiet
         shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
 
     def icon_rect(self) -> tuple[int, int, int, int] | None:
@@ -313,6 +332,9 @@ class TrayIcon:
             if msg == WM_CLOSE:
                 self._on_event("quit", 0, 0)
                 return 0  # 不交給 DefWindowProc：視窗由 close() 統一銷毀
+            if msg == self._activate and self._activate:
+                self._on_event("activate", 0, 0)
+                return 0
             if msg == self._taskbar_created and self._taskbar_created:
                 log.info("Explorer 重新啟動，重新登錄系統匣圖示")
                 self._added = False

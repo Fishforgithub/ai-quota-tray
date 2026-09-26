@@ -13,6 +13,11 @@ P4：抓取失敗時保留上一次的數字（model.carry_over）；剩餘 < 10
 卡片開關：NIN_POPUPOPEN（hover）或點一下圖示 → 開；之後每 HOVER_CHECK_MS 看一次滑鼠，
 離開「圖示＋卡片」超過 HIDE_DELAY_S 才關。不直接靠 NIN_POPUPCLOSE 關，
 是因為滑鼠從圖示移到卡片上的途中就會收到 CLOSE，使用者會看不到卡片。
+點通知、或已在執行時又被啟動一次（activate）打開的卡片，滑鼠多半不在圖示附近，
+所以先停留 HOLD_OPEN_S 秒；滑鼠移進卡片或圖示過一次之後，才回到上面的規則。
+
+App 沒有主視窗，所以第一次啟動跳一則歡迎通知（只一次，config 的 welcomed），
+已在執行時再啟動一次就請原本那份打開卡片（win32tray.activate_running_instance）。
 """
 from __future__ import annotations
 
@@ -46,6 +51,7 @@ VIEW_REFRESH_INTERVAL_S = {"codex": 120, "antigravity": 300, "copilot": 300}
 RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
 HIDE_DELAY_S = 0.4
+HOLD_OPEN_S = 8.0  # 不是 hover 打開的卡片先停留這麼久（見模組說明）
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
 APP_USER_MODEL_ID = "AiQuotaTray.App"
@@ -122,6 +128,7 @@ class TrayApp(QObject):
         self._settings: SettingsDialog | None = None
         self._card_anchor: tuple[int, int, int, int] | None = None
         self._outside_since: float | None = None
+        self._hold_until = 0.0  # monotonic；在這之前滑鼠不在卡片上也不關
         self._hover_timer = QTimer(self)
         self._hover_timer.setInterval(HOVER_CHECK_MS)
         self._hover_timer.timeout.connect(self._check_hover)
@@ -240,13 +247,16 @@ class TrayApp(QObject):
 
     # ---------- 卡片 ----------
 
-    def show_card(self, x: int, y: int) -> None:
+    def show_card(self, x: int, y: int, hold: bool = False) -> None:
+        """hold=True：不是 hover 打開的（點通知、又被啟動一次），先停留 HOLD_OPEN_S 秒。"""
         self._refresh_on_view()
         # 取不到圖示位置（例如收在關著的溢位區）就用事件給的錨點
         self._card_anchor = self.tray.icon_rect() or (x, y, x + 1, y + 1)
         self.card.set_states(self._card_states(), self._banner())
         self.card.show_at(self._card_anchor)
         self._outside_since = None
+        if hold:
+            self._hold_until = time.monotonic() + HOLD_OPEN_S
         self._hover_timer.start()
 
     def hide_card(self) -> None:
@@ -261,6 +271,9 @@ class TrayApp(QObject):
         on_icon = al <= x < ar and at <= y < ab
         if on_card or on_icon:
             self._outside_since = None
+            self._hold_until = 0.0  # 滑鼠來過了，之後照一般規則
+        elif time.monotonic() < self._hold_until:
+            pass
         elif self._outside_since is None:
             self._outside_since = time.monotonic()
         elif time.monotonic() - self._outside_since >= HIDE_DELAY_S:
@@ -270,8 +283,10 @@ class TrayApp(QObject):
 
     def _on_tray_event(self, kind: str, x: int, y: int) -> None:
         log.debug("tray event %s (%d, %d)", kind, x, y)
-        if kind in ("popup_open", "select", "balloon_click"):
+        if kind in ("popup_open", "select"):
             self.show_card(x, y)
+        elif kind in ("balloon_click", "activate"):
+            self.show_card(x, y, hold=True)
         elif kind == "resume":
             self._resume_timer.start()
         elif kind == "context_menu":
@@ -309,6 +324,10 @@ class TrayApp(QObject):
                     self.tray.show_balloon(tr("startup.blocked_title"), tr("startup.blocked_body"))
         elif cmd == MENU_QUIT:
             QApplication.quit()
+
+    def show_welcome(self) -> None:
+        """第一次啟動：App 沒有主視窗，不說一聲會以為沒啟動。使用者自己啟動的，不受 quiet time 限制。"""
+        self.tray.show_balloon(tr("welcome.title"), tr("welcome.body"), respect_quiet_time=False)
 
     # ---------- 設定 ----------
 
@@ -369,8 +388,10 @@ def run() -> int:
     """Start the tray with saved service and language settings."""
     mutex = win32tray.acquire_single_instance(MUTEX_NAME)
     if mutex is None:
-        print("AI Usage Meter 已經在執行了", file=sys.stderr)
-        return 1
+        # 從開始功能表又點一次：請原本那份打開卡片，不要什麼都沒發生
+        activated = win32tray.activate_running_instance()
+        print("AI Usage Meter 已經在執行了" + ("，已請它打開卡片" if activated else ""), file=sys.stderr)
+        return 0 if activated else 1
 
     enabled = config.load_enabled(set(ALL))
     language = config.load_language()
@@ -385,6 +406,9 @@ def run() -> int:
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))
     tray_app = TrayApp(enabled, language, demo_mode)
     app.aboutToQuit.connect(tray_app.shutdown)
+    if not config.load_welcomed():
+        tray_app.show_welcome()
+        config.save(welcomed=True)
 
     # 讓主控台 Ctrl+C 能結束：Qt 迴圈裡 Python 收不到訊號，靠計時器讓直譯器定期醒來
     signal.signal(signal.SIGINT, lambda *_: QApplication.quit())

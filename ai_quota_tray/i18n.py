@@ -29,6 +29,12 @@ STRINGS: dict[str, tuple[str, str]] = {
     "startup.blocked_title": ("開機啟動被 Windows 關閉了", "Start with Windows is turned off"),
     "startup.blocked_body": ("請到 Windows 設定 → 應用程式 → 啟動，把 AI Usage Meter 打開。",
                              "Turn on AI Usage Meter in Windows Settings → Apps → Startup."),
+    # 第一次啟動的歡迎通知（App 沒有主視窗，不說一聲會以為沒啟動）。標題 ≤63、內文 ≤255 字元
+    "welcome.title": ("AI Usage Meter 已在系統匣執行", "AI Usage Meter is running in the notification area"),
+    "welcome.body": ("滑鼠移到系統匣圖示上就能看到用量，按右鍵可以開設定。"
+                     "工作列上找不到圖示的話，請點 ^ 找找看。點這則通知也能打開。",
+                     "Hover the tray icon to see your usage, or right-click it for Settings. "
+                     "If you don't see the icon, look under the ^ arrow. You can also click this notification."),
     # 卡片
     "card.loading": ("讀取中…", "Loading…"),
     "card.nothing_enabled": ("沒有啟用任何服務，請在右鍵選單「設定…」勾選",

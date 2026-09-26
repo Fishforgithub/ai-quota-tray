@@ -169,11 +169,11 @@
 
 **為什麼一定要寫**：
 - 審核人員的電腦上不會有 Claude Code、Codex 等 CLI，正常模式下卡片只會顯示「還沒有資料」或查詢失敗，很容易被判成「App 沒有功能」→ 要教他開示範模式。
-- **App 沒有主視窗**：從開始功能表啟動後只會在系統匣加一個圖示，Windows 11 預設還會把它收進 `^`；已經在執行時再啟動一次會直接結束、畫面上什麼都沒有（`app.run()` 的單一實例檢查）。不寫清楚，審核人員可能以為 App 沒啟動。
+- **App 沒有主視窗**：從開始功能表啟動後只會在系統匣加一個圖示，Windows 11 預設還會把它收進 `^`。2026-09-26 起第一次啟動會跳歡迎通知、已在執行時再啟動一次會打開卡片（`tests/test_launch.py`），但審核人員不一定會注意到通知，所以這裡仍要寫清楚。
 
 **要貼的英文**（按鈕與選單文字照 `i18n.py` 的英文字串，審核機若是英文介面就會一模一樣）
 
-> AI Usage Meter has no main window. After you start it, it adds an icon to the notification area (system tray). On Windows 11 the icon may first appear in the hidden icons area: click the ^ arrow on the taskbar to find it. Starting the app again while it is already running does nothing visible.
+> AI Usage Meter has no main window. After you start it, it adds an icon to the notification area (system tray). On Windows 11 the icon may first appear in the hidden icons area: click the ^ arrow on the taskbar to find it. The first time it starts, a notification says it is running; clicking the notification opens the card. Starting the app again from the Start menu while it is already running also opens the card.
 >
 > The app shows the usage limits of AI coding tools (Claude Code, Codex, Antigravity CLI, GitHub Copilot) that are installed and signed in on the same PC. A test machine won't have these tools, so the card would only say there is no data yet. To review the full interface without any of them, please use the built-in demo mode:
 >
@@ -187,7 +187,7 @@
 
 **中文對照（給業主核對，不用貼）**
 
-> AI Usage Meter 沒有主視窗。啟動後會在系統匣加一個圖示；Windows 11 可能先把它放在隱藏圖示區，點工作列的 ^ 就找得到。已經在執行時再啟動一次，畫面上不會有任何變化。
+> AI Usage Meter 沒有主視窗。啟動後會在系統匣加一個圖示；Windows 11 可能先把它放在隱藏圖示區，點工作列的 ^ 就找得到。第一次啟動時會跳一則通知說它在執行，點通知會打開卡片；已經在執行時從開始功能表再啟動一次，也會打開卡片。
 >
 > 這個 App 顯示同一台電腦上已安裝並登入的 AI 程式開發工具的用量。測試機不會有這些工具，卡片只會顯示還沒有資料。要在沒有這些工具的情況下看完整介面，請用內建的示範模式：
 > 1. 在系統匣圖示按右鍵，選「設定…」。
