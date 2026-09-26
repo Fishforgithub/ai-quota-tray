@@ -163,7 +163,44 @@
 
 **對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`_kill_tree`）、`providers/antigravity.py`、`providers/copilot.py` ④`claude_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
 
-## 6. 還沒做
+## 6. 給審核人員的認證注意事項
+
+**填在哪**：左側「補充資訊」→「其他測試資訊」（產品層級，不跟著提交走；desk-pet 經驗）。不需要測試帳號，⚠️ 也不要把任何帳號資訊寫進這裡或商店描述。
+
+**為什麼一定要寫**：
+- 審核人員的電腦上不會有 Claude Code、Codex 等 CLI，正常模式下卡片只會顯示「還沒有資料」或查詢失敗，很容易被判成「App 沒有功能」→ 要教他開示範模式。
+- **App 沒有主視窗**：從開始功能表啟動後只會在系統匣加一個圖示，Windows 11 預設還會把它收進 `^`；已經在執行時再啟動一次會直接結束、畫面上什麼都沒有（`app.run()` 的單一實例檢查）。不寫清楚，審核人員可能以為 App 沒啟動。
+
+**要貼的英文**（按鈕與選單文字照 `i18n.py` 的英文字串，審核機若是英文介面就會一模一樣）
+
+> AI Usage Meter has no main window. After you start it, it adds an icon to the notification area (system tray). On Windows 11 the icon may first appear in the hidden icons area: click the ^ arrow on the taskbar to find it. Starting the app again while it is already running does nothing visible.
+>
+> The app shows the usage limits of AI coding tools (Claude Code, Codex, Antigravity CLI, GitHub Copilot) that are installed and signed in on the same PC. A test machine won't have these tools, so the card would only say there is no data yet. To review the full interface without any of them, please use the built-in demo mode:
+>
+> 1. Right-click the tray icon and choose "Settings…".
+> 2. Check "Demo mode" at the bottom left and press "Save".
+> 3. Hover the mouse over the tray icon (or click it once). A card opens with sample data for all four services: percentage left, progress bars in green, yellow, and red, and reset countdowns. A red line at the top of the card says "Demo mode: sample data, not your actual quota".
+>
+> In demo mode the app makes no queries and starts no other tools. No sign-in or account is needed, and there are no in-app purchases.
+>
+> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window switches the interface language between English and Traditional Chinese.
+
+**中文對照（給業主核對，不用貼）**
+
+> AI Usage Meter 沒有主視窗。啟動後會在系統匣加一個圖示；Windows 11 可能先把它放在隱藏圖示區，點工作列的 ^ 就找得到。已經在執行時再啟動一次，畫面上不會有任何變化。
+>
+> 這個 App 顯示同一台電腦上已安裝並登入的 AI 程式開發工具的用量。測試機不會有這些工具，卡片只會顯示還沒有資料。要在沒有這些工具的情況下看完整介面，請用內建的示範模式：
+> 1. 在系統匣圖示按右鍵，選「設定…」。
+> 2. 勾選左下角的「示範模式」，按「儲存」。
+> 3. 滑鼠移到系統匣圖示上（或點一下）。會彈出四個服務的範例資料卡片：剩餘百分比、綠／黃／紅進度條與重置倒數，卡片頂端有一行紅字「示範模式・以下為範例資料，不是你的額度」。
+>
+> 示範模式下不查詢任何服務、不啟動其他工具。不需要登入或帳號，也沒有內購。
+>
+> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換中英文介面。
+
+⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字時，這段要一起改。
+
+## 7. 還沒做
 
 - 截圖（至少 1 張、建議 4 張，`.png`、最小 1366×768；⚠️ 每種語言的截圖要是那個語言的介面，desk-pet 經驗：英文清單配中文截圖會被退件）
-- Store 標誌、IARC 年齡分級問卷、給審核人員的認證注意事項（示範模式；填在左側「補充資訊」→「其他測試資訊」，desk-pet 經驗）
+- Store 標誌、IARC 年齡分級問卷
