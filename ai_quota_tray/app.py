@@ -405,6 +405,7 @@ class TrayApp(QObject):
                          name="store-update", daemon=True).start()
 
     def _on_update_checked(self, available: bool | None) -> None:
+        log.info("Store 更新檢查：%s", {True: "有新版", False: "已是最新", None: "查不到"}[available])
         if available is None:
             return  # 查不到：維持原狀，下次再查
         self.update_available = available
