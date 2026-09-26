@@ -64,6 +64,19 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 - **啟動時的可見回應（2026-09-26，為了 Store 審核）**：App 沒有主視窗，原本從開始功能表啟動後畫面上什麼都沒出現、已在執行時再點一次新行程直接結束，審核人員會以為沒啟動。現在：①第一次啟動跳歡迎通知（`welcome.*` 字串，只一次，config 的 `welcomed`；在 `run()` 觸發而不是 `TrayApp` 建構式，免得測試寫到真的設定檔），**不帶 `NIIF_RESPECT_QUIET_TIME`**（全新電腦登入後第一小時是 quiet time，審核 VM 會碰到；這則是回應使用者自己的動作）；②已在執行時再啟動一次 → `win32tray.activate_running_instance()` 用 `FindWindowW(AiQuotaTrayWindow)`＋`RegisterWindowMessage("AiQuotaTray.Activate")` 請原本那份打開卡片，新行程 exit 0；③點通知或 activate 打開的卡片先停留 `HOLD_OPEN_S`（8 秒），滑鼠進過卡片或圖示後回到 0.4 秒規則（否則滑鼠在開始功能表那邊，卡片一開就被關掉）。`tests/test_launch.py`（含真的建隱藏視窗、真的 PostMessage；測試會換掉 `CLASS_NAME`，免得送到本機正在跑的那份）。實測：venv 版（`LOCALAPPDATA` 指到暫存）與封裝版（loose registration、從 `shell:AppsFolder\<PFN>!AiQuotaTray` 啟動＝開始功能表的路徑）都截圖看過；封裝版通知的來源顯示「AI Usage Meter」，venv／打包版 exe 顯示 AUMID `AiQuotaTray.App`（個人版才有，沒處理）。
 
+### 下一版（v0.2）規劃（業主 2026-09-26 定）
+
+1. **Store 版「發現新版本」提示**（照 desk-pet `src-tauri/src/store_update.rs` 的做法，見 `desk-pet/docs/store-listing.md` 的「Store 版的『有新版』提示」）：
+   - 有套件身分時用 WinRT `StoreContext.GetAppAndOptionalStorePackageUpdatesAsync()`（`winrt-Windows.Services.Store`）問 Store；個人版（沒有套件身分）不查。
+   - 有新版 → 系統匣通知「發現新版本」（點通知開設定）；設定視窗右上角多一顆「**版本可更新**」按鈕，直接開 `ms-windows-store://pdp/?productid=9PLDWKRFDGDC`，使用者在 Store 按更新。沒有新版時按鈕不顯示。
+   - 設定視窗標題加版號：`AI Usage Meter · 服務設定（Ver. 0.1.0.0）`（業主給的示意圖）。版號有套件身分時取 `Package.Current.Id.Version`，否則讀 pyproject／`__version__`，四段式與 MSIX 一致。⚠️ `test_p4`／`test_i18n` 有測試逐字比對視窗標題，要一起改。
+   - desk-pet 實測的限制：API 拿到的 `Package.Id.Version` 是**已安裝版**，拿不到新版版號 → 文字一律寫「發現新版本」不寫版號；Partner Center 的「強制更新」OS 不會強制也不會提示；更新時 App 可能被關掉、裝完不保證重開（開機啟動下次登入會帶回來）。
+   - 通知別吵：每次啟動最多提示一次（拿不到新版版號，無法「每個版本一次」）。查詢頻率先定啟動時＋每 6 小時（desk-pet 是 25 分鐘，這個 App 不需要那麼勤）。
+   - 🔴 **隱私權政策與商店文案要一起改**：現在寫「App 自己不會連到任何伺服器」，檢查更新會連 Microsoft Store 的服務（只問有沒有更新、不送個人資料）。fish-zero-web 的兩份政策、`docs/site/` 副本、`docs/store-listing.md` 的說明與 runFullTrust 說明都要補一句。
+   - 🔴 **這功能要等帶著它的那一版裝到使用者手上，才能提示再下一版**：v0.1 的使用者只能靠 Store 自己的自動更新升到 v0.2。
+2. **xAI（Grok）**：看回信決定（見上方 📨）。
+3. ✅ 已先做（2026-09-26，會跟 v0.2 一起出去）：設定視窗的語言下拉改成整塊圓角＋自己的 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`），原本右邊是 Windows 原生的方塊下拉鈕、凸出一截；寬度改成依內容（寫死 108px 時英文「System default」被切掉）。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 > ⏸️ **2026-09-26 的狀態**：MSIX 那批改動已在本機 commit（`9528f1b`），**沒有 push**（業主指示）；產品名改成 AI Usage Meter；unittest 141 過；WACK PASS（啟動回應那批改動只動 Python，送審前的最終套件建議再跑一次 WACK）。Partner Center 已保留名稱（見上方 MSIX 段），用正式 Identity 打出 `build\msix\AiUsageMeter-0.1.0.0-x64.msix`（47.2 MB，manifest 與 PRI 中英文顯示名稱核對過）；打包時已自動移除舊的佔位 loose registration，本機目前沒有任何註冊。系統匣平常跑的是 `dist\AiQuotaTray\AiQuotaTray.exe`（已含 Claude 安裝按鈕與示範模式）。下一步：（WACK 已 PASS）→ 隱私權政策與產品頁 ✅ 2026-09-26 已上線（fish-zero-web `c1142df`，副本在 `docs/site/`）→ 商店頁文案與 Partner Center 各欄位怎麼填：`docs/store-listing.md` → runFullTrust 說明、認證注意事項、IARC 答法、截圖（`packaging/store_shots.py`）、Store 標誌都在 `docs/store-listing.md`／`docs/store/`。`build\msix\AiUsageMeter-0.1.0.0-x64.msix` 已含啟動回應改動，加版本資訊、改檔名後的最終版 WACK PASS（14:19）。fish-zero-web 的「沒有第三方廣告」更正 commit 在 `36de9c6`，**未 push**。✅ 2026-09-26 Submission 1 全部填完（定價、屬性、年齡分級、套件 `AiUsageMeter-0.1.0.0-x64.msix`（WACK PASS 14:19）、中英文清單＋截圖＋標誌、其他測試資訊），明細見 `docs/store-listing.md` §0.5。✅ **業主 2026-09-26 已送出認證**，等微軟結果。

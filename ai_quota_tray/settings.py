@@ -22,9 +22,11 @@ ORDER = tuple(ALL)
 
 PALETTE = {
     "dark": {"bg": "#23262b", "panel": "#1d2025", "line": "#3a3f47", "text": "#e8eaed",
-             "dim": "#9aa0a6", "accent": "#3b8fc4", "accent_hover": "#4a9fd4", "button": "#2f333a"},
+             "dim": "#9aa0a6", "accent": "#3b8fc4", "accent_hover": "#4a9fd4", "button": "#2f333a",
+             "chevron": "chevron-down-dark.svg"},
     "light": {"bg": "#f6f7f9", "panel": "#ffffff", "line": "#d7dbe0", "text": "#1f2328",
-              "dim": "#5f6368", "accent": "#1a73e8", "accent_hover": "#3b86ec", "button": "#e9ecef"},
+              "dim": "#5f6368", "accent": "#1a73e8", "accent_hover": "#3b86ec", "button": "#e9ecef",
+              "chevron": "chevron-down-light.svg"},
 }
 STORE_URL = "https://apps.microsoft.com/detail/9MVGRHJJHX0M"
 DESKPET_BANNER = ASSETS / "deskpet-banner.webp"
@@ -45,9 +47,16 @@ def _style(p: dict[str, str]) -> str:
         QLabel#heading {{ font-size: 12pt; }}
         QFrame#table {{ background: {p['panel']}; border: 1px solid {p['line']}; border-radius: 8px; }}
         QFrame#line {{ background: {p['line']}; border: none; }}
-        QComboBox {{ min-height: 28px; padding: 0 10px; border-radius: 6px; color: {p['text']};
+        QComboBox {{ min-height: 28px; padding: 0 4px 0 10px; border-radius: 6px; color: {p['text']};
                     background: {p['button']}; border: 1px solid {p['line']}; }}
-        QComboBox QAbstractItemView {{ color: {p['text']}; background: {p['panel']};
+        QComboBox:hover {{ border-color: {p['dim']}; }}
+        /* 只改外框的話，右邊的下拉鈕還是 Windows 原生的方塊，會凸出一截（2026-09-26 業主回報）。
+           改成透明、無邊框的區塊，箭頭用自己的 SVG，外觀才會跟 desk-pet 的網頁下拉一樣是一整塊圓角。 */
+        QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right;
+                               width: 26px; border: none; background: transparent; }}
+        QComboBox::down-arrow {{ image: url({(ASSETS / p['chevron']).as_posix()}); width: 12px; height: 12px; }}
+        QComboBox QAbstractItemView {{ color: {p['text']}; background: {p['panel']}; outline: 0;
+                                      border: 1px solid {p['line']}; padding: 4px;
                                       selection-background-color: {p['accent']}; }}
         QPushButton {{ min-width: 88px; min-height: 30px; border-radius: 6px; padding: 0 14px;
                       color: {p['text']}; background: {p['button']}; border: 1px solid {p['line']}; }}
@@ -102,7 +111,9 @@ class SettingsDialog(QDialog):
         top.addWidget(self._text(QLabel(), "settings.language", "langLabel"))
         self.language = QComboBox()
         self.language.setObjectName("language")
-        self.language.setFixedWidth(108)
+        # 依最長的選項決定寬度：寫死 108 時英文的「System default」會被切掉
+        self.language.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.language.setMinimumWidth(108)
         for code in i18n.LANGUAGES:
             self.language.addItem(i18n.NATIVE_NAMES.get(code, ""), code)
         self.language.setCurrentIndex(i18n.LANGUAGES.index(self._initial_language))
