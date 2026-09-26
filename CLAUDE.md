@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
-> ⏸️ **2026-09-26 的狀態**：v0.1.0.0 已上架（Submission 1，不到一小時就過）。0.1.1.0 程式與文件已完成（上方 0.1.1 段），業主在本機看過開發版 OK；接下來打包 → WACK → Submission 2（明細 `docs/store-listing.md` §0.6）。
+> ⏸️ **2026-09-26 的狀態**：v0.1.0.0 已上架（Submission 1，不到一小時就過）。0.1.1.0 已送 **Submission 2** 認證（業主 2026-09-26 送出；套件 `AiUsageMeter-0.1.1.0-x64.msix`、WACK PASS 16:02，明細 `docs/store-listing.md` §0.6），程式與文件已 push。下一步：等認證結果（退件就照原因修）；上架後同事可以裝。下一版：xAI（Grok）看回信。
 
 > 📨 **xAI（Grok）詢問中**：業主 2026-09-26 12:44 寄信給 `sales@x.ai`，問第三方 App 能不能讀 Grok Build CLI 的本機 token、呼叫 `cli-chat-proxy.grok.com/v1/billing` 等端點來顯示使用者自己的用量，或有沒有官方介面可用。業主決定：**回覆 OK 才在下一版加回來**。⚠️ 信裡附的 `blob/main/.../providers/grok.py` 已經 404（P5 `236e126` 刪掉了）；對方要看程式碼時改給固定版本 `https://github.com/Fishforgithub/ai-quota-tray/blob/7376facef447ea03969deed62bfe4aaf9a6a30f2/ai_quota_tray/providers/grok.py`（實測 200）。信裡的產品名是舊的 AI Quota Tray。🔴 **加回來不只是改程式**：隱私權政策、商店說明與功能（「不讀取、不保存登入權杖」）、runFullTrust 說明（「reads no tokens」）、認證注意事項、產品頁都寫死了「不碰 token」，Grok 若仍是讀 token 的做法，這些都要改成「Grok 例外、需使用者自行啟用」並重新送審；若 xAI 給的是官方 API／CLI 指令，就能維持「不碰 token」的說法。
 
