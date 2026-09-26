@@ -139,6 +139,36 @@ class ExeManifestTest(unittest.TestCase):
         self.assertIn(">true</longPathAware>", text)
 
 
+class VersionInfoTest(unittest.TestCase):
+    """exe 的版本資訊：工作管理員顯示的描述要是產品名稱，版本號跟 pyproject／MSIX 一致。"""
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("version_info", ROOT / "packaging" / "version_info.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_build_script_embeds_it(self):
+        text = (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8-sig")
+        self.assertIn(r"packaging\version_info.py build\version_info.txt", text)
+        self.assertIn(r"--version-file build\version_info.txt", text)
+
+    def test_pyinstaller_can_parse_it(self):
+        from PyInstaller.utils.win32 import versioninfo
+        vi = self.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "version_info.txt"
+            path.write_text(vi.render(vi.project_version()), encoding="utf-8")
+            info = versioninfo.load_version_info_from_text_file(str(path))
+        text = str(info)
+        self.assertIn("'ProductName', 'AI Usage Meter'", text)
+        self.assertIn("'FileDescription', 'AI Usage Meter'", text)
+        self.assertIn("'OriginalFilename', 'AiQuotaTray.exe'", text)  # exe 檔名刻意不改
+
+    def test_version_matches_msix(self):
+        self.assertEqual(".".join(map(str, self.load().project_version())), load_pack_msix().msix_version())
+
+
 class ImagesTest(unittest.TestCase):
     def test_every_manifest_image_exists_at_the_right_size(self):
         from PIL import Image

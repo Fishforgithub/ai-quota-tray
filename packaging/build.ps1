@@ -4,12 +4,16 @@ $ErrorActionPreference = "Stop"
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 .venv\Scripts\python -m pip install -q pyinstaller
+# exe 的版本資訊（工作管理員顯示的描述、檔案內容的產品名稱），版本號從 pyproject 讀
+.venv\Scripts\python packaging\version_info.py build\version_info.txt
+if ($LASTEXITCODE -ne 0) { throw "version_info.py 失敗（$LASTEXITCODE）" }
 .venv\Scripts\pyinstaller --noconfirm --clean --onedir --windowed `
     --name AiQuotaTray `
     --distpath dist --workpath build `
     --paths . `
     --icon ai_quota_tray\assets\app.ico `
     --manifest packaging\app.manifest `
+    --version-file build\version_info.txt `
     --add-data "ai_quota_tray\assets;ai_quota_tray\assets" `
     --copy-metadata github-copilot-sdk `
     --exclude-module tkinter `

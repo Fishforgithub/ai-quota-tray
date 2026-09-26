@@ -230,7 +230,7 @@ def main() -> None:
     print("▶ makepri …")
     make_pri(makepri, identity)
 
-    msix = OUT / f"AiQuotaTray-{version}-x64.msix"
+    msix = OUT / f"AiUsageMeter-{version}-x64.msix"  # 檔名只是給人看的，Store 看的是 manifest 的 Identity
     print("▶ makeappx pack …")
     run([makeappx, "pack", "/d", STAGE, "/p", msix, "/o"])
     print(f"✅ 產出：{msix}（{msix.stat().st_size / 1024 / 1024:.1f} MB）")
