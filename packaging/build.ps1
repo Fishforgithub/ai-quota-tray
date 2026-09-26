@@ -9,6 +9,7 @@ Set-Location (Split-Path $PSScriptRoot -Parent)
     --distpath dist --workpath build `
     --paths . `
     --icon ai_quota_tray\assets\app.ico `
+    --manifest packaging\app.manifest `
     --add-data "ai_quota_tray\assets;ai_quota_tray\assets" `
     --copy-metadata github-copilot-sdk `
     --exclude-module tkinter `

@@ -123,6 +123,22 @@ class ManifestTest(unittest.TestCase):
             self.assertNotIn(mark, text)
 
 
+class ExeManifestTest(unittest.TestCase):
+    """build.ps1 嵌進 exe 的資訊清單：WACK 的 DPI 檢查要 PerMonitorV2，也不能弄丟 PyInstaller 的預設值。"""
+
+    def test_build_script_embeds_it(self):
+        self.assertIn(r"--manifest packaging\app.manifest", (ROOT / "packaging" / "build.ps1").read_text(encoding="utf-8-sig"))
+
+    def test_parses_and_keeps_defaults(self):
+        from xml.dom import minidom
+        text = (ROOT / "packaging" / "app.manifest").read_text(encoding="utf-8")
+        minidom.parseString(text.encode("utf-8"))  # PyInstaller 用 minidom 解析；註解裡有 -- 就會在這裡炸
+        self.assertIn(">PerMonitorV2<", text)
+        self.assertIn('level="asInvoker"', text)
+        self.assertIn("{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}", text)  # supportedOS：Windows 10/11
+        self.assertIn(">true</longPathAware>", text)
+
+
 class ImagesTest(unittest.TestCase):
     def test_every_manifest_image_exists_at_the_right_size(self):
         from PIL import Image

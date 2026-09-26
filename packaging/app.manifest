@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  嵌進 AiQuotaTray.exe 的應用程式資訊清單（由 build.ps1 帶給 PyInstaller）。
+  ⚠️ XML 註解裡不能出現連續兩個減號，否則 PyInstaller 解析失敗。
+
+  為什麼要自己給：Qt 6 本來就在執行時設成 Per-Monitor v2，但 WACK 的 DPIAwarenessValidation
+  只看資訊清單與靜態匯入，看不到 → 總結果被拉成 WARNING（2026-09-26）。
+  ⚠️ 一旦自己給，PyInstaller 就不用它的預設清單（只補 Common Controls），所以 trustInfo、
+  supportedOS、longPathAware 都是從 PyInstaller 6.22 的 winmanifest._DEFAULT_MANIFEST_XML 抄來的，
+  少了 supportedOS 會被 Windows 當成舊版系統的程式。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"></requestedExecutionLevel>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"></supportedOS>
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"></supportedOS>
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"></supportedOS>
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"></supportedOS>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"></supportedOS>
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
