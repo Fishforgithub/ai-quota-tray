@@ -6,3 +6,4 @@ dist/
 *.spec
 probe-*.json
 *.egg-info/
+.env.local

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AI Quota Tray Store 版的 MSIX 套件資訊清單 **樣板**。
+  由 packaging/pack_msix.py 把 {{…}} 換掉後寫進打包暫存區，本檔本身不會被打包。
+  結構照 desk-pet/msix/AppxManifest.xml（已在 Store 上架過），踩過的坑見那份的註解。
+
+    {{IDENTITY_NAME}}           Partner Center 保留應用程式後拿到的 Identity/Name（⚠️ 必須完全一致）
+    {{PUBLISHER}}               Partner Center 的 Publisher（CN=… 形式，⚠️ 必須完全一致）
+    {{PUBLISHER_DISPLAY_NAME}}  發行者顯示名（不可與產品名相同）
+    {{VERSION}}                 a.b.c.d，**最後一段必須是 0**（Store 保留給自己用）
+
+  顯示名與描述一律 ms-resource:，字串由 pack_msix.py 依語言產進 resources.pri：開始功能表／
+  工作管理員上的名稱只看套件、不看商店 listing（desk-pet 2026-09-24 上架後才發現）。
+  <Resources> 決定商店頁「支援的語言」；第一個是預設語言。
+  ⚠️ Identity 一旦發布就不能改（改了 Store 更新會斷）。
+  ⚠️ StartupTask 的 TaskId 必須與 ai_quota_tray/startup.py 的 TASK_ID 完全一致。
+     Enabled="false"＝出廠不自啟；使用者在右鍵選單勾「開機時啟動」時由 RequestEnableAsync() 打開。
+     開機啟動時不帶參數執行 exe，AiQuotaTray.exe 不帶參數就是 tray。
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 rescap">
+
+  <Identity
+    Name="{{IDENTITY_NAME}}"
+    Publisher="{{PUBLISHER}}"
+    Version="{{VERSION}}"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>ms-resource:AppDisplayName</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY_NAME}}</PublisherDisplayName>
+    <Logo>images\StoreLogo.png</Logo>
+    <Description>ms-resource:AppDescription</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="zh-TW" />
+    <Resource Language="en" />
+  </Resources>
+
+  <Applications>
+    <Application Id="AiQuotaTray" Executable="AiQuotaTray.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="ms-resource:AppDisplayName"
+        Description="ms-resource:TileDescription"
+        BackgroundColor="transparent"
+        Square150x150Logo="images\Square150x150Logo.png"
+        Square44x44Logo="images\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="images\Wide310x150Logo.png"
+          Square310x310Logo="images\Square310x310Logo.png"
+          Square71x71Logo="images\Square71x71Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <uap5:Extension
+          Category="windows.startupTask"
+          Executable="AiQuotaTray.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask TaskId="AiQuotaTrayStartup" Enabled="false" DisplayName="ms-resource:AppDisplayName" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

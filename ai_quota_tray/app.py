@@ -301,7 +301,12 @@ class TrayApp(QObject):
                 startup.disable()
                 log.info("已關閉開機啟動")
             else:
-                log.info("已開啟開機啟動：%s", startup.enable())
+                try:
+                    log.info("已開啟開機啟動：%s", startup.enable())
+                except startup.StartupBlocked as exc:
+                    # MSIX 版：使用者在工作管理員／Windows 設定關掉過，App 不能自己打開
+                    log.info("開機啟動被擋：%s", exc)
+                    self.tray.show_balloon(tr("startup.blocked_title"), tr("startup.blocked_body"))
         elif cmd == MENU_QUIT:
             QApplication.quit()
 
@@ -372,7 +377,9 @@ def run() -> int:
     i18n.set_language(language)
     demo_mode = config.load_demo()
 
-    win32tray.set_app_id(APP_USER_MODEL_ID)  # 工作列用我們的圖示，不歸到 pythonw.exe
+    if not startup.is_packaged():
+        # 工作列用我們的圖示，不歸到 pythonw.exe。MSIX 版的 ID 由套件決定，自己設反而會對不上
+        win32tray.set_app_id(APP_USER_MODEL_ID)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 沒有任何 Qt 視窗也要常駐
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))

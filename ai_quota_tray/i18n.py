@@ -26,6 +26,9 @@ STRINGS: dict[str, tuple[str, str]] = {
     "menu.settings": ("設定…", "Settings…"),
     "menu.startup": ("開機時啟動", "Start with Windows"),
     "menu.quit": ("關閉", "Quit"),
+    "startup.blocked_title": ("開機啟動被 Windows 關閉了", "Start with Windows is turned off"),
+    "startup.blocked_body": ("請到 Windows 設定 → 應用程式 → 啟動，把 AI Quota Tray 打開。",
+                             "Turn on AI Quota Tray in Windows Settings → Apps → Startup."),
     # 卡片
     "card.loading": ("讀取中…", "Loading…"),
     "card.nothing_enabled": ("沒有啟用任何服務，請在右鍵選單「設定…」勾選",
