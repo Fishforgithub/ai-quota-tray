@@ -133,7 +133,37 @@
 - 跟直接競品「AI Limits」（會讀取各工具的登入權杖）的差異就是**不碰登入**，所以放在說明第三段與功能第 4、5 條。
 - Windows 11 會把新圖示收進 `^`，卡片會出現在 `^` 上方（CLAUDE.md §0 實測），所以說明裡教使用者把圖示拖出來。
 
-## 5. 還沒做
+## 5. 受限功能 `runFullTrust` 的用途說明
+
+**填在哪**：提交的「提交選項」頁，紅框必填（desk-pet 經驗：前五步都完成也送不出去，這一項是最後才冒出來的；首發核准過之後，更新就不會再問）。
+套件只宣告這一個受限功能（`packaging/msix/AppxManifest.xml` 的 `rescap:Capability`）。填完後「提交選項」仍顯示「未完成」是正常的，要等微軟人工核准。
+
+**要貼的英文**（2026-09-26 照原始碼逐項核對；每一條都對得到程式碼，改到這些行為要回來改這段）
+
+> AI Usage Meter is a Win32 desktop app (Python with Qt, packaged with PyInstaller) that lives in the Windows notification area. It needs full trust for the following:
+>
+> 1. Notification area icon and hover card: it registers its icon with Shell_NotifyIconW (NOTIFYICON_VERSION_4) to receive hover events, uses Shell_NotifyIconGetRect to place its card next to the icon, TrackPopupMenu for the right-click menu, and balloon notifications (NIF_INFO) for low-usage alerts.
+> 2. Reading usage records that other developer tools keep in the user's profile, outside the package: %USERPROFILE%\.claude\usage-cache.json and %USERPROFILE%\.codex\sessions\. Only the usage-limit fields are used.
+> 3. Starting official command-line tools that the user installed and signed in to, as child processes: Codex CLI ("codex app-server", over stdin/stdout), Antigravity CLI ("agy -p /usage"), and the GitHub Copilot SDK runtime. These tools handle sign-in themselves; the app never reads their credentials or tokens. When it closes, the app makes sure the Codex processes it started exit: it closes their input first, and uses taskkill /T only if they are still running after 2 seconds.
+> 4. Optional, only after the user presses "Install" and confirms: pointing Claude Code's status line setting (%USERPROFILE%\.claude\settings.json, backed up first) to a small script in %USERPROFILE%\.claude\ai-quota-tray\ that saves the usage fields. "Remove" restores the original setting.
+> 5. When the user turns on GitHub Copilot, the official Copilot SDK downloads its runtime from GitHub into %LOCALAPPDATA%\github-copilot-sdk.
+>
+> The app runs as the current user (asInvoker) and never asks for administrator rights. It installs no drivers or services, does not inject into or modify other processes, reads no passwords, tokens, or credential stores, has no server of its own, and sends no data to the developer. Start with Windows uses the windows.startupTask extension.
+
+**中文對照（給業主核對，不用貼）**
+
+> AI Usage Meter 是住在 Windows 系統匣的 Win32 桌面程式（Python＋Qt，用 PyInstaller 打包），以下幾件事需要完全信任權限：
+> 1. 系統匣圖示與懸停卡片：`Shell_NotifyIconW`（VERSION_4）收 hover 事件、`Shell_NotifyIconGetRect` 把卡片放在圖示旁、`TrackPopupMenu` 右鍵選單、`NIF_INFO` 低額度通知。
+> 2. 讀取其他開發工具放在使用者資料夾（套件外）的用量紀錄：`.claude\usage-cache.json`、`.codex\sessions\`，只用額度欄位。
+> 3. 以子程序啟動使用者自己安裝、登入的官方 CLI：`codex app-server`（stdin/stdout）、`agy -p /usage`、Copilot SDK runtime。登入由它們自己處理，本 App 不讀它們的憑證或權杖；關閉時先關掉 Codex 的輸入讓它自己結束，2 秒後還在才用 `taskkill /T` 結束自己啟動的程序樹。
+> 4. 選用，使用者按「安裝」並確認後才做：把 Claude Code 的狀態列設定（先備份）指向 `.claude\ai-quota-tray\` 裡的小程式，只存額度欄位；按「移除」還原。
+> 5. 使用者啟用 Copilot 時，官方 SDK 會從 GitHub 下載 runtime 到 `%LOCALAPPDATA%\github-copilot-sdk`。
+>
+> 以目前使用者身分執行（asInvoker）、不要求系統管理員；不裝驅動或服務、不注入或修改其他程序、不讀密碼／權杖／認證存放區、沒有自己的伺服器、不傳資料給開發者。開機啟動走 `windows.startupTask`。
+
+**對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`_kill_tree`）、`providers/antigravity.py`、`providers/copilot.py` ④`claude_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
+
+## 6. 還沒做
 
 - 截圖（至少 1 張、建議 4 張，`.png`、最小 1366×768；⚠️ 每種語言的截圖要是那個語言的介面，desk-pet 經驗：英文清單配中文截圖會被退件）
-- Store 標誌、IARC 年齡分級問卷、runFullTrust 說明、給審核人員的認證注意事項（示範模式）
+- Store 標誌、IARC 年齡分級問卷、給審核人員的認證注意事項（示範模式；填在左側「補充資訊」→「其他測試資訊」，desk-pet 經驗）
