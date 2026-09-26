@@ -175,7 +175,7 @@ class TrayIcon:
 
     CLASS_NAME = "AiQuotaTrayWindow"
 
-    def __init__(self, on_event: Callable[[str, int, int], None], tooltip: str = "AI Quota Tray"):
+    def __init__(self, on_event: Callable[[str, int, int], None], tooltip: str = "AI Usage Meter"):
         self._on_event = on_event
         self._tooltip = tooltip
         self._hicon = None
@@ -189,7 +189,7 @@ class TrayIcon:
         if not user32.RegisterClassExW(ctypes.byref(wc)):
             raise ctypes.WinError(ctypes.get_last_error())
         # style=0、不 ShowWindow → 隱藏的頂層視窗
-        self.hwnd = user32.CreateWindowExW(0, self.CLASS_NAME, "AI Quota Tray", 0,
+        self.hwnd = user32.CreateWindowExW(0, self.CLASS_NAME, "AI Usage Meter", 0,
                                            0, 0, 0, 0, None, None, self._hinst, None)
         if not self.hwnd:
             raise ctypes.WinError(ctypes.get_last_error())

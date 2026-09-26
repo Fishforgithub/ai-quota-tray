@@ -1,6 +1,6 @@
 # ai-quota-tray — 專案交接文件
 
-Windows 系統匣常駐工具：顯示 Claude / Codex / Antigravity CLI / GitHub Copilot 各視窗的剩餘 %、重置倒數（預設只啟用 Claude、Codex）。
+Windows 系統匣常駐工具（產品名 **AI Usage Meter**，repo／內部 ID 仍叫 ai-quota-tray）：顯示 Claude / Codex / Antigravity CLI / GitHub Copilot 各視窗的剩餘 %、重置倒數（預設只啟用 Claude、Codex）。
 滑鼠 hover 系統匣圖示 → 彈出自訂卡片（非原生 tooltip）。
 
 > 本文件最初來自 2026-09-25 的研究與規劃。現行來源：Claude 本機 statusLine cache、Codex 官方 App Server（失敗退回本機 rollout）、Antigravity 官方 agy CLI、Copilot 官方 SDK。Grok 原本使用未公開端點，現已停用並從介面移除。下文 Grok 與私有端點記錄僅供歷史參考，不代表現行實作。
@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
   - 過期偵測：API 失敗／token 過期時 `model.carry_over` 保留上一次的視窗（狀態維持 `auth_expired`/`error`、`fetched_at` 用上次成功的時間），卡片整塊變灰＋「n 分鐘前」＋失敗原因；期間過了重置時間照樣歸零。睡眠喚醒（`WM_POWERBROADCAST`）10 秒後重讀 Claude 本機快取。
   - 通知（`alerts.py`）：剩餘 < 10%（＝卡片進度條變紅）時用 `NIF_INFO` 發 toast（`NIIF_RESPECT_QUIET_TIME`），點通知開卡片。**每個視窗每個重置週期只一次**：鍵＝`provider|label|resets_at`，記在 `%LOCALAPPDATA%\ai-quota-tray\state.json`（重開不重複；重置時間過了自動清掉；壞檔直接覆寫）。只看 `ok`/`stale`，失敗後保留的舊數字不發。
   - 右鍵選單（業主要求保持乾淨）：立即刷新／設定…／開機時啟動／關閉。
-  - 設定視窗（`settings.py`，非模態、只開一個）：標題「AI Quota Tray · 服務設定」，只提供服務啟用勾選和語言選擇；資料來源由各 provider 固定決定。來源說明收在可展開區。預設只啟用 Claude、Codex；未啟用的服務不抓取、不顯示、不發通知。底部有自家「萌寵桌面精靈／Taskbar Buddy」中英文廣告橫幅，素材取自官網 repo，僅點擊時開啟 Microsoft Store 商品頁。設定存於 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `enabled`／`language`，舊 `token_sources` 在下次儲存時移除。
+  - 設定視窗（`settings.py`，非模態、只開一個）：標題「AI Usage Meter · 服務設定」，只提供服務啟用勾選和語言選擇；資料來源由各 provider 固定決定。來源說明收在可展開區。預設只啟用 Claude、Codex；未啟用的服務不抓取、不顯示、不發通知。底部有自家「萌寵桌面精靈／Taskbar Buddy」中英文廣告橫幅，素材取自官網 repo，僅點擊時開啟 Microsoft Store 商品頁。設定存於 `%LOCALAPPDATA%\ai-quota-tray\config.json` 的 `enabled`／`language`，舊 `token_sources` 在下次儲存時移除。
   - 開機啟動（`startup.py`）：切換 HKCU `Run` 機碼的 `AiQuotaTray` 值；寫入目前的啟動方式（venv → `pythonw.exe -m ai_quota_tray tray`；打包版 → `AiQuotaTray.exe tray`），不帶 `--debug`/`--log`。⚠️ MSIX 無效，上線要改 `startupTask`。
   - 打包（`packaging/`）：`launch.py` 當進入點（`__main__.py` 是相對 import）；⚠️ 必須 `--paths .`，否則 editable 安裝的套件 PyInstaller 追不到，exe 一啟動就 `ModuleNotFoundError`，windowed 版會卡在錯誤對話框。打包後刪 `opengl32sw.dll`（20 MB）與 Qt `translations`。⚠️ `build.ps1` 有中文，**必須存成 UTF-8 with BOM**（PowerShell 5.1 會把無 BOM 當 cp950）。打包版不帶參數直接雙擊＝`tray`（啟用服務照 config.json）。Copilot SDK 要 `--copy-metadata github-copilot-sdk`（它從套件 metadata 讀自己的版本號，沒帶會變 `0.0.0.dev0`）；SDK 帶進 pydantic／httpx，整包約 91 MB（2026-09-26 第一次記成 110.5 MB 是錯的：那次 `opengl32sw.dll` 20 MB 沒刪掉，刪除指令設了 SilentlyContinue 所以沒報錯），runtime（111 MB）不在包裡、執行時才下載。2026-09-26 打包版實測：啟動只讀本機、hover 後四家都抓到、卡片截圖（PrintWindow）正常、廣告 webp 有 `qwebp.dll`；查完 Copilot runtime 與 agy 都會結束，只有 Codex App Server 三層常駐，關閉程式後全部清掉。
   - 已驗證：unittest 55 過（含 `MenuTest`：真的走 `_on_tray_event("context_menu")` → `handle_menu`；`SettingsDialogTest`）；實跑發出 Grok 8% 通知並寫進 state.json；venv 版與打包版都實跑過右鍵選單截圖＋三家抓取；實際從右鍵開設定視窗截圖看過；exe 圖示取出來看過。**toast 畫面本身沒截到、睡眠喚醒沒實測、開機啟動只測了暫用機碼**。
@@ -58,18 +58,18 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - **MSIX 打包（2026-09-26）**：`packaging/pack_msix.py`（先跑 build.ps1 → 複製 `dist\AiQuotaTray` 到 `build\msix\stage` → Pillow 從 `app.png` 產磚塊／工作列圖示（含 targetsize-16～256 的 unplated）→ makepri（去掉 `<packaging>` 免得英文被拆包，dump 逐字串核對）→ makeappx）＋`packaging/msix/AppxManifest.xml` 樣板，流程照 desk-pet 的 `scripts/pack-msix.mjs`。`--register` 做 loose registration（開發者模式、免簽章、就地參照 stage）。Identity／Publisher 目前是佔位值 `FishZero.AIQuotaTray`／`CN=FishZero`，保留名稱後用 `AIQT_MSIX_IDENTITY`／`AIQT_MSIX_PUBLISHER`／`AIQT_MSIX_PUBLISHER_DISPLAY`（環境變數或 gitignore 的 `.env.local`）覆蓋。產出 `build\msix\AiQuotaTray-0.1.0.0-x64.msix` 約 47 MB（dist 資料夾約 99 MB）。
   - 開機啟動：`startup.py` 分兩條路，有套件身分（`GetCurrentPackageFullName` ≠ 15700）就用 WinRT `StartupTask`（`winrt-Windows.ApplicationModel`，TaskId `AiQuotaTrayStartup` 要與 manifest 一致，`test_msix` 會檢查），否則 HKCU `Run`。使用者在 Windows 設定關過（`DISABLED_BY_USER`）App 不能自己打開 → `StartupBlocked`，右鍵選單跳通知教他去「設定 → 應用程式 → 啟動」。有套件身分時不呼叫 `set_app_id`（ID 由套件決定）。
   - 新 `startup` 子命令（`status`／`on`／`off`，`--out FILE`）給 MSIX 實測用：`Invoke-CommandInDesktopPackage -PackageFamilyName <PFN> -AppId AiQuotaTray -Command <stage>\AiQuotaTray.exe -Args "startup on --out <檔案>"` 就能以套件身分驗證（結果檔別放 AppData 底下，會被重導）。
-  - ✅ 2026-09-26 loose registration 實測：套件身分偵測正確、打包版的 winrt 能用、StartupTask 出廠 DISABLED → on 變 ENABLED → off 變 DISABLED；以套件身分跑 tray＋模擬 hover，**四家都抓到**（Codex 的 `codex.CMD`→node、agy、Copilot SDK 在套件裡都叫得動）；開始功能表出現「AI Quota Tray」。`%LOCALAPPDATA%` 是讀穿、寫入才進 `Packages\<PFN>\LocalCache`：這次沒有寫入所以 LocalCache 是空的，設定與 Copilot runtime 都讀到原本位置的那份——Store 版與個人版一開始共用設定、之後各改各的。💡 從 PowerShell 用 `Add-Type` 宣告的 `FindWindow` 傳 `$null` 送 `WM_CLOSE` 沒送到，改用 Python ctypes 才正常（不是 App 卡住）。
+  - ✅ 2026-09-26 loose registration 實測：套件身分偵測正確、打包版的 winrt 能用、StartupTask 出廠 DISABLED → on 變 ENABLED → off 變 DISABLED；以套件身分跑 tray＋模擬 hover，**四家都抓到**（Codex 的 `codex.CMD`→node、agy、Copilot SDK 在套件裡都叫得動）；開始功能表出現「AI Quota Tray」（改名前）。`%LOCALAPPDATA%` 是讀穿、寫入才進 `Packages\<PFN>\LocalCache`：這次沒有寫入所以 LocalCache 是空的，設定與 Copilot runtime 都讀到原本位置的那份——Store 版與個人版一開始共用設定、之後各改各的。💡 從 PowerShell 用 `Add-Type` 宣告的 `FindWindow` 傳 `$null` 送 `WM_CLOSE` 沒送到，改用 Python ctypes 才正常（不是 App 卡住）。
   - 還沒做：WACK（`appcert.exe` 要系統管理員；業主帳號 `coss0\fish` 不是本機管理員，desk-pet 的 pack-msix.mjs 開頭記了要在同一個管理員視窗一次做完 `--register` 與 WACK）、從開始功能表真人啟動、StartupTask 真的開機跑一次、套件內的寫入（存設定）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
-> ⏸️ **2026-09-26 收工時的狀態**：MSIX 那批改動（`packaging/pack_msix.py`、`packaging/msix/`、`startup.py` 的 StartupTask、`startup` 子命令、`tests/test_msix.py`、pyproject 的 winrt、`.gitignore` 加 `.env.local`）**還沒 commit**，在 `main` 的工作區；unittest 126 過。本機裝著佔位 Identity 的 loose registration（`FishZero.AIQuotaTray_xx7ge9rervt9a`，開始功能表有「AI Quota Tray」），要移除：`Get-AppxPackage FishZero.AIQuotaTray | Remove-AppxPackage`。系統匣平常跑的是 `dist\AiQuotaTray\AiQuotaTray.exe`（已含 Claude 安裝按鈕與示範模式）。下一步：業主決定要不要 commit／push → Partner Center 保留名稱拿 Identity／Publisher → 管理員視窗跑 WACK → 上架資料（隱私權政策、商店頁、截圖、IARC、runFullTrust 說明、認證注意事項）。
+> ⏸️ **2026-09-26 的狀態**：MSIX 那批改動已在本機 commit（`9528f1b`），**沒有 push**（業主指示）；產品名改成 AI Usage Meter；unittest 126 過。本機裝著佔位 Identity 的 loose registration（`FishZero.AIQuotaTray_xx7ge9rervt9a`，開始功能表有「AI Quota Tray」），要移除：`Get-AppxPackage FishZero.AIQuotaTray | Remove-AppxPackage`。系統匣平常跑的是 `dist\AiQuotaTray\AiQuotaTray.exe`（已含 Claude 安裝按鈕與示範模式）。下一步：業主到 Partner Center 保留「AI Usage Meter」拿 Identity／Publisher → 管理員視窗跑 WACK → 上架資料（隱私權政策、商店頁、截圖、IARC、runFullTrust 說明、認證注意事項）。
 
 1. 先決定散佈管道（Store／公司內部 App Installer 或 Intune／GitHub）——會決定簽章方式與政策嚴格度。可參考 `desk-pet` 已走過的 Store MSIX 流程（`desk-pet/docs/store-listing.md`）。
 2. 上線版**不能由 tray 直接碰 token**（§1 原則 5、§5 政策）：設定視窗已沒有來源切換，Grok 已停用；Codex 走官方 App Server、Copilot 走官方 SDK、Antigravity 走官方 agy CLI。須驗證 MSIX 套件呼叫外部 CLI 與 SDK runtime 的行為。
 3. ~~開機啟動改 `windows.startupTask`~~ ✅ 2026-09-26 已做並在 loose registration 實測（見上）。
 4. ~~驗證 `%LOCALAPPDATA%` 重導與套件內讀 `.claude`／`.codex`~~ ✅ 讀取正常、寫入才進 LocalCache（見上）；套件內的寫入還沒實際觸發過。
-5. 名稱與圖示避開 Claude／Codex／Grok／Antigravity／Copilot 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名已是 AI Quota Tray。
+5. 名稱與圖示避開 Claude／Codex／Grok／Antigravity／Copilot 商標：顯示名稱集中在 `model.DISPLAY_NAME`；產品名 2026-09-26 定為 **AI Usage Meter**（業主：quota 不直覺）。只換畫面上的名稱；exe、mutex、設定資料夾、Run 機碼、StartupTask ID、hook 資料夾仍是 `AiQuotaTray`／`ai-quota-tray`，舊設定不用搬。Store 已有「AI Limits」（直接競品、會讀 token）與「AI Usage Tracker」；Google Play 有同名 Android App「AI Usage Meter」。
 6. 簽章：Store 代簽；sideload 要 Azure Trusted Signing。
 7. 還沒實測、上線前要補：toast 畫面、睡眠喚醒重抓、真正寫入 `Run` 的開機啟動、多螢幕／工作列在其他邊／非 125% DPI 的卡片定位、真人點「設定…」時視窗是否在最前面。
 8. 送審的「認證注意事項」要寫：右鍵系統匣圖示 →「設定…」→ 勾「示範模式」→ 儲存，再 hover 圖示看卡片（審核人員沒有 Claude Code／Codex 等 CLI）。
@@ -181,7 +181,7 @@ UI：卡片開著每秒重算倒數；關閉時每 30 秒更新圖示。
 - `%LOCALAPPDATA%` 寫入會重導到套件目錄；解除安裝會清除。
 - PyInstaller 用 `--onedir`，不要 `--onefile`。
 - 簽章：Store 代簽；sideload 需受信任憑證（Azure Trusted Signing）。
-- **政策**：上線版資料來源必須全部不碰 token；名稱與圖示避開「Claude / Codex / Grok / Antigravity / Copilot」商標（例如中性名稱 AI Quota Tray）。
+- **政策**：上線版資料來源必須全部不碰 token；名稱與圖示避開「Claude / Codex / Grok / Antigravity / Copilot」商標（產品名 AI Usage Meter）。
 - 散佈選項：Microsoft Store / 公司內部 App Installer 或 Intune / GitHub 開源（provider 由使用者自行啟用）。尚未決定。
 
 ## 6. 開發階段

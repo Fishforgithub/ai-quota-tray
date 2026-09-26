@@ -369,7 +369,7 @@ def run() -> int:
     """Start the tray with saved service and language settings."""
     mutex = win32tray.acquire_single_instance(MUTEX_NAME)
     if mutex is None:
-        print("AI Quota Tray 已經在執行了", file=sys.stderr)
+        print("AI Usage Meter 已經在執行了", file=sys.stderr)
         return 1
 
     enabled = config.load_enabled(set(ALL))

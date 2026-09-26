@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AI Quota Tray Store 版的 MSIX 套件資訊清單 **樣板**。
+  AI Usage Meter Store 版的 MSIX 套件資訊清單 **樣板**。
   由 packaging/pack_msix.py 把 {{…}} 換掉後寫進打包暫存區，本檔本身不會被打包。
   結構照 desk-pet/msix/AppxManifest.xml（已在 Store 上架過），踩過的坑見那份的註解。
 

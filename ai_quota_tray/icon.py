@@ -59,4 +59,4 @@ def tooltip(states: list[ProviderState]) -> str:
             parts.append(f"{s.name} {wins}")
         else:
             parts.append(f"{s.name} {s.status}")
-    return ("AI Quota Tray｜" + "；".join(parts))[:127]
+    return ("AI Usage Meter｜" + "；".join(parts))[:127]

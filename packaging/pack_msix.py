@@ -44,12 +44,12 @@ PLACEHOLDER_PUBLISHER = "CN=FishZero"
 # 用 "en" 不用 "en-US"：宣告 en-US 會被 Partner Center 當成另一個語言、多要一份空白 listing（desk-pet 經驗）。
 PKG_STRINGS = {
     "zh-TW": {
-        "AppDisplayName": "AI Quota Tray",
+        "AppDisplayName": "AI Usage Meter",
         "AppDescription": "在系統匣顯示 AI 程式開發工具的剩餘用量與重置倒數；滑鼠移到圖示上就看得到。",
         "TileDescription": "AI 程式開發工具的剩餘用量。",
     },
     "en": {
-        "AppDisplayName": "AI Quota Tray",
+        "AppDisplayName": "AI Usage Meter",
         "AppDescription": "Shows how much of your AI coding tools' usage is left and when it resets, "
                           "right in the system tray. Hover the icon to see it.",
         "TileDescription": "Remaining usage of your AI coding tools.",
@@ -195,7 +195,7 @@ def main() -> None:
     publisher = env.get("AIQT_MSIX_PUBLISHER", PLACEHOLDER_PUBLISHER)
     publisher_display = env.get("AIQT_MSIX_PUBLISHER_DISPLAY", "Fish Zero")
     version = msix_version()
-    print(f"▶ AI Quota Tray MSIX v{version}（Identity {identity}）")
+    print(f"▶ AI Usage Meter MSIX v{version}（Identity {identity}）")
     if identity == PLACEHOLDER_IDENTITY or publisher == PLACEHOLDER_PUBLISHER:
         print("⚠️  Identity/Publisher 仍是佔位值——本機試跑可以，上 Partner Center 前務必換成保留到的真值。")
 

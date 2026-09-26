@@ -256,7 +256,7 @@ class SettingsDialog(QDialog):
 
     def confirm(self, text: str) -> bool:
         lang = self.preview_language()
-        box = QMessageBox(QMessageBox.Question, "AI Quota Tray", text,
+        box = QMessageBox(QMessageBox.Question, "AI Usage Meter", text,
                           QMessageBox.Yes | QMessageBox.No, self)
         # 打包版刪了 Qt 的翻譯檔，按鈕字自己給
         box.button(QMessageBox.Yes).setText(tr("settings.yes", lang))
@@ -274,7 +274,7 @@ class SettingsDialog(QDialog):
         try:
             claude_hook.install() if installing else claude_hook.uninstall()
         except (claude_hook.HookError, OSError) as exc:
-            QMessageBox.warning(self, "AI Quota Tray", tr("settings.hook.failed", lang, err=exc))
+            QMessageBox.warning(self, "AI Usage Meter", tr("settings.hook.failed", lang, err=exc))
         self._hook_status = claude_hook.status()
         self._refresh_hook()
 

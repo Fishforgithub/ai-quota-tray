@@ -27,8 +27,8 @@ STRINGS: dict[str, tuple[str, str]] = {
     "menu.startup": ("開機時啟動", "Start with Windows"),
     "menu.quit": ("關閉", "Quit"),
     "startup.blocked_title": ("開機啟動被 Windows 關閉了", "Start with Windows is turned off"),
-    "startup.blocked_body": ("請到 Windows 設定 → 應用程式 → 啟動，把 AI Quota Tray 打開。",
-                             "Turn on AI Quota Tray in Windows Settings → Apps → Startup."),
+    "startup.blocked_body": ("請到 Windows 設定 → 應用程式 → 啟動，把 AI Usage Meter 打開。",
+                             "Turn on AI Usage Meter in Windows Settings → Apps → Startup."),
     # 卡片
     "card.loading": ("讀取中…", "Loading…"),
     "card.nothing_enabled": ("沒有啟用任何服務，請在右鍵選單「設定…」勾選",
@@ -66,7 +66,7 @@ STRINGS: dict[str, tuple[str, str]] = {
                    "{name} {label} window has {pct}% left{reset}."),
     "alert.reset": ("，{countdown} 後重置", ", resets in {countdown}"),
     # 設定視窗
-    "settings.title": ("AI Quota Tray · 服務設定", "AI Quota Tray · Services"),
+    "settings.title": ("AI Usage Meter · 服務設定", "AI Usage Meter · Services"),
     "settings.heading": ("選擇要顯示的服務", "Choose services to show"),
     "settings.subtitle": ("查看時更新雲端額度；Claude 定期讀取本機資料。", "Cloud quotas refresh on view; Claude reads local files."),
     "settings.col.service": ("服務", "Service"),
@@ -86,13 +86,13 @@ STRINGS: dict[str, tuple[str, str]] = {
     "settings.hook.confirm_install": (
         "要安裝 Claude 狀態列擷取嗎？\n\n"
         "會修改 Claude Code 的設定檔：\n{path}\n\n"
-        "・把狀態列指令換成 AI Quota Tray 的小程式（放在同一個資料夾的 ai-quota-tray 底下），"
+        "・把狀態列指令換成 AI Usage Meter 的小程式（放在同一個資料夾的 ai-quota-tray 底下），"
         "它把 Claude Code 自己已經拿到的額度數字存到本機，不呼叫任何 API、不碰登入憑證。\n"
         "・你原本的狀態列會照常顯示。\n"
         "・改之前會先備份設定檔；之後可以隨時回來按「移除」還原。",
         "Install the Claude status line capture?\n\n"
         "This changes Claude Code's settings file:\n{path}\n\n"
-        "• The status line command is replaced with a small AI Quota Tray script (stored in an "
+        "• The status line command is replaced with a small AI Usage Meter script (stored in an "
         "ai-quota-tray folder next to it). It saves the quota numbers Claude Code already has to "
         "this PC. No API calls, and your sign-in is never touched.\n"
         "• Your current status line keeps showing as before.\n"

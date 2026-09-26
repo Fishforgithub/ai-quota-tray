@@ -107,8 +107,8 @@ class StartupTest(unittest.TestCase):
 
     def test_frozen_exe(self):
         with mock.patch.object(sys, "frozen", True, create=True), \
-                mock.patch.object(sys, "executable", r"C:\Apps\AI Quota Tray\AiQuotaTray.exe"):
-            self.assertEqual(startup.command_line(), r'"C:\Apps\AI Quota Tray\AiQuotaTray.exe" tray')
+                mock.patch.object(sys, "executable", r"C:\Apps\AI Usage Meter\AiQuotaTray.exe"):
+            self.assertEqual(startup.command_line(), r'"C:\Apps\AI Usage Meter\AiQuotaTray.exe" tray')
 
     def test_registry_roundtrip(self):
         winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.TEST_KEY).Close()
@@ -344,7 +344,7 @@ class SettingsDialogTest(unittest.TestCase):
     def test_service_choices_and_source_descriptions(self):
         from PySide6.QtWidgets import QLabel, QRadioButton
         dlg, applied = self.make()
-        self.assertEqual(dlg.windowTitle(), "AI Quota Tray · 服務設定")
+        self.assertEqual(dlg.windowTitle(), "AI Usage Meter · 服務設定")
         self.assertFalse(dlg.windowIcon().isNull())
         self.assertEqual(dlg.selected_enabled(), {"claude", "codex"})
         self.assertNotIn("grok", dlg.checks)

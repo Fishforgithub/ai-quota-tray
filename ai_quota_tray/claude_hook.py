@@ -35,8 +35,8 @@ LEGACY_MARKERS = ("statusline-usage.js",)
 BACKUP_SUFFIX = ".ai-quota-tray.bak"
 
 HOOK_SCRIPT = r'''# ai-quota-tray statusline hook v{version}
-# 由 AI Quota Tray 安裝。把 Claude Code 給狀態列的 rate_limits 存到本機，再照常顯示原本的狀態列。
-# 移除：AI Quota Tray 右鍵 → 設定… → Claude 那一列的「移除」（會還原原本的狀態列設定）。
+# 由 AI Usage Meter 安裝。把 Claude Code 給狀態列的 rate_limits 存到本機，再照常顯示原本的狀態列。
+# 移除：AI Usage Meter 右鍵 → 設定… → Claude 那一列的「移除」（會還原原本的狀態列設定）。
 $ErrorActionPreference = 'SilentlyContinue'
 $utf8 = New-Object System.Text.UTF8Encoding $false
 [Console]::InputEncoding = $utf8

@@ -103,7 +103,7 @@ class AppServerClient:
         threading.Thread(target=self._read_stdout, args=(self._process, self._messages),
                          name="codex-app-server-reader", daemon=True).start()
         self._request("initialize", {"clientInfo": {
-            "name": "ai_quota_tray", "title": "AI Quota Tray", "version": "0.1.0",
+            "name": "ai_quota_tray", "title": "AI Usage Meter", "version": "0.1.0",
         }})
         self._send({"method": "initialized"})
 
