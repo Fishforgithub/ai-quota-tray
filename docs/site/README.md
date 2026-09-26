@@ -19,5 +19,5 @@ Claude hook 寫什麼（`claude_hook.py` 的 `HOOK_SCRIPT`）、本機存檔（`
 
 💡 中文段落不要在句中斷行：站台的 Markdown 會把換行變成空格，中文字之間就多一個空白。
 
-還沒做：Store 上架後把商店網址補進產品頁的「下載」，並考慮加進 fish-zero.com 首頁的自家 App 輪播（`site/lib/site-config.mjs`，smoke 測試有逐字鎖商店網址）。
+✅ 2026-09-26 已 push 上線（部署 run 成功、四個網址實測 200）。還沒做：Store 上架後把商店網址補進產品頁的「下載」，並考慮加進 fish-zero.com 首頁的自家 App 輪播（`site/lib/site-config.mjs`，smoke 測試有逐字鎖商店網址）。
 🔴 fish-zero-web 的 push main ＝ 全世界立刻看得到，push 前要問業主。
