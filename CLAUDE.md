@@ -70,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
   **業主定：一律開著、不給開關**（原本做了「圖示動畫」勾選，業主看過後拿掉）。自動停轉：鎖定畫面（`WTSRegisterSessionNotification` → lock／unlock）、螢幕關閉（`RegisterPowerSettingNotification(GUID_CONSOLE_DISPLAY_STATE)`，變暗算開著）、省電模式與 Windows「動畫效果」（沒有通知可收，`ANIM_CHECK_INTERVAL_S` 10 秒看一次）。停下時 `show_static` 回品牌圖示。
   💡 註冊螢幕狀態通知時 Windows 會**立刻**送一次目前狀態（display_on）——測試要只看自己關心的事件。
 - **Store 版「發現新版本」**（`store_update.py`）：有套件身分才查（啟動 30 秒後、之後每 6 小時，背景執行緒），WinRT `StoreContext.get_app_and_optional_store_package_updates_async().size > 0`；查不到回 None 不動作。有新版 → 每次啟動最多一則通知（點通知開設定，`_last_balloon` 分辨通知種類）＋設定右上「版本可更新」→ `ms-windows-store://pdp/?productid=9PLDWKRFDGDC`。desk-pet 的限制照樣：拿不到新版版號、強制更新不會強制、更新時 App 可能被關掉。
-  測試／截圖用 `AIQT_FAKE_UPDATE=1`（個人版沒有 Store 可問，設了才看得到）。⚠️ **真的從 Store 更新的流程還沒實測**：要等 0.1.1 上架後、再有下一版時才驗得到（v0.1.0 沒有這功能）。
+  測試／截圖用 `AIQT_FAKE_UPDATE=1`（個人版沒有 Store 可問，設了才看得到）。✅ 套件內呼叫得到 Store API：loose registration 以套件身分跑 0.1.1，log「Store 更新檢查：已是最新」（本機裝的 0.1.1 ≥ Store 上的 0.1.0）；打包版有帶 `_winrt_windows_services_store.pyd`（Python 那層在 PYZ 裡，資料夾看不到）。⚠️ **「真的有新版」那條路還沒實測**：要等 0.1.1 上架後、再有下一版時才驗得到（v0.1.0 沒有這功能）。💡 loose registration 與 Store 正式版同一個 Identity，測完一定要 `Remove-AppxPackage`，不然從 Store 安裝會衝突。
 - **設定視窗**：標題 `AI Usage Meter · 服務設定（Ver. 0.1.1.0）`（`display_version()`＝`__version__`＋`.0`，`VersionTest` 檢查與 pyproject 一致）；底部「隱私權政策 · 官網」連結（英文介面開 `/en/`）＋「非 Anthropic、OpenAI、GitHub、Google 官方產品」；高度 653 → 683。語言下拉：drop-down 透明＋自製 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`，打包版有 qsvg／Qt6Svg），寬度依內容。
   💡 樣式表的 `min-width` 會蓋過 `setFixedWidth`（按鈕寬要改兩邊一起改）。
 - 隱私權政策同步：「App 自己不會連到任何伺服器」改成「沒有自己的伺服器、不傳資料給開發者」，補「檢查更新」與設定視窗兩個連結（fish-zero-web `5758044`、`51a9aba`，smoke 測試鎖住）。商店說明／功能／此版本新增功能／runFullTrust／認證注意事項見 `docs/store-listing.md` §0.6。
