@@ -9,7 +9,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from ai_quota_tray import alerts, config, i18n  # noqa: E402
+from ai_quota_tray import alerts, config, display_version, i18n  # noqa: E402
 from ai_quota_tray.card import header_note, status_message, window_countdown  # noqa: E402
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, OK, STALE, ProviderState,  # noqa: E402
                                  format_age, make_window)
@@ -109,11 +109,11 @@ class SettingsLanguageTest(unittest.TestCase):
 
     def test_switch_previews_without_touching_global_and_cancel_discards(self):
         dlg, applied = self.make()
-        self.assertEqual(dlg.windowTitle(), "AI Usage Meter · 服務設定")
+        self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · 服務設定（Ver. {display_version()}）")
         self.assertEqual([dlg.language.itemText(i) for i in range(3)],
                          ["跟隨系統", "繁體中文", "English"])
         dlg.language.setCurrentIndex(i18n.LANGUAGES.index("en"))
-        self.assertEqual(dlg.windowTitle(), "AI Usage Meter · Services")
+        self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · Services (Ver. {display_version()})")
         self.assertTrue({"Service", "Save", "Cancel", "Language"} <= self.texts(dlg))
         self.assertEqual(dlg.language.itemText(0), "System default")
         self.assertEqual(i18n.current(), i18n.ZH)  # 還沒儲存

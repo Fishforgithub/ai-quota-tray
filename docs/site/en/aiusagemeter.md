@@ -24,6 +24,8 @@ AI Usage Meter sits in the system tray and puts what's left, and when it resets,
   and only one per reset period.
 - **It tells you when numbers are old**: if a lookup fails or the data is out of date, that section turns grey and shows how many minutes old it is.
   Old numbers are never passed off as current ones.
+- **A slowly rotating neon ring**: it pauses on its own when the screen is locked or off, in battery saver, or when Windows animation effects are turned off.
+- **Tells you when a new version is out**: the Microsoft Store version shows a notification, and Settings gets a button that takes you straight to the Store.
 - **Can start with Windows**, and the interface switches between English and Traditional Chinese.
 
 ## Supported tools
@@ -43,7 +45,7 @@ AI Usage Meter is an independent tool and is not affiliated with Anthropic, Open
 
 AI Usage Meter **never reads or stores your passwords or sign-in tokens**. When it needs live numbers,
 it asks the official tool that is already signed in on your computer to look them up, and shows the result.
-In the background it only reads local records, without using the network. It checks online only when you open the card, and not again for a few minutes.
+In the background it only reads local records. It checks online only when you open the card, and not again for a few minutes (the Microsoft Store version also asks the Store now and then whether a new version is available).
 
 ## Privacy
 

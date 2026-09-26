@@ -43,7 +43,7 @@ This reading happens on your computer and involves no network access.
 
 ## 3. When the network is used
 
-**The app itself never connects to any server.** When live numbers are needed, it starts an official tool you have already installed in the background. That tool asks its own service for your usage **using the sign-in you already have**, and hands the result back to the app for display.
+**The app has no server of its own and sends nothing to the developer.** When live numbers are needed, it starts an official tool you have already installed in the background. That tool asks its own service for your usage **using the sign-in you already have**, and hands the result back to the app for display.
 
 | Service | Official tool started | When |
 |---|---|---|
@@ -54,9 +54,11 @@ This reading happens on your computer and involves no network access.
 
 In the background, the app only re-reads the local records from section 2 every 2 minutes, without using the network.
 
+**Update check**: the version installed from the Microsoft Store asks the Microsoft Store service built into Windows whether a new version is available, about 30 seconds after it starts and every 6 hours after that. The check only asks about updates and sends no personal data or usage numbers. If there is a new version you get one notification; whether to update is up to you, in the Microsoft Store.
+
 These lookups are made directly between each official tool and its own service, and are covered by that service's own privacy policy. The app only receives the usage numbers (percentage used, reset time, plan name). It never receives or stores your account credentials.
 
-**Other connections**: the bottom of the Settings window shows a banner marked "Ad" that promotes another app by the same developer. It is the only ad in the app; its image is built into the app rather than loaded from the internet, and no third-party advertising code is included. Only if you click it does your browser open its Microsoft Store page.
+**Other connections**: the bottom of the Settings window shows a banner marked "Ad" that promotes another app by the same developer. It is the only ad in the app; its image is built into the app rather than loaded from the internet, and no third-party advertising code is included. Only if you click it does your browser open its Microsoft Store page. The bottom of the Settings window also has "Privacy policy" and "Website" links, which likewise open pages on this website in your browser only when you click them.
 
 ## 4. Optional: Claude status line capture
 

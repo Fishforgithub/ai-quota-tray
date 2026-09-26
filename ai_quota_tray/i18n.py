@@ -35,6 +35,11 @@ STRINGS: dict[str, tuple[str, str]] = {
                      "工作列上找不到圖示的話，請點 ^ 找找看。點這則通知也能打開。",
                      "Hover the tray icon to see your usage, or right-click it for Settings. "
                      "If you don't see the icon, look under the ^ arrow. You can also click this notification."),
+    # Store 版查到有新版（store_update.py）。拿不到新版版號，所以不寫版號
+    "update.title": ("發現新版本", "New version available"),
+    "update.body": ("AI Usage Meter 有新版本了。點這則通知，或到「設定…」按「版本可更新」，前往 Microsoft Store 更新。",
+                    "A new version of AI Usage Meter is available. Click this notification, or open Settings… "
+                    "and choose Update available, to update it in the Microsoft Store."),
     # 卡片
     "card.loading": ("讀取中…", "Loading…"),
     "card.nothing_enabled": ("沒有啟用任何服務，請在右鍵選單「設定…」勾選",
@@ -111,6 +116,12 @@ STRINGS: dict[str, tuple[str, str]] = {
     ),
     "settings.hook.failed": ("操作失敗，沒有做任何變更：{err}", "That didn't work and nothing was changed: {err}"),
     "settings.demo": ("示範模式", "Demo mode"),
+    "settings.version": ("（Ver. {v}）", " (Ver. {v})"),
+    "settings.update": ("版本可更新", "Update available"),
+    "settings.link.privacy": ("隱私權政策", "Privacy policy"),
+    "settings.link.website": ("官網", "Website"),
+    "settings.disclaimer": ("非 Anthropic、OpenAI、GitHub、Google 官方產品",
+                            "Not affiliated with Anthropic, OpenAI, GitHub, or Google"),
     "settings.yes": ("是", "Yes"),
     "settings.no": ("否", "No"),
     "settings.source.codex": ("透過官方 App Server 查詢；失敗時退回本機紀錄。",

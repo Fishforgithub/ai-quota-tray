@@ -44,6 +44,11 @@ TPM_BOTTOMALIGN = 0x0020
 SM_CXICON, SM_CXSMICON = 11, 49
 ERROR_ALREADY_EXISTS = 183
 TRAY_ID = 1
+# 圖示動畫的停轉條件（icon_anim.py／app.py）
+WM_WTSSESSION_CHANGE, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK = 0x02B1, 0x7, 0x8
+PBT_POWERSETTINGCHANGE = 0x8013
+SPI_GETCLIENTAREAANIMATION = 0x1042  # Windows 設定「動畫效果」
+DEVICE_NOTIFY_WINDOW_HANDLE, NOTIFY_FOR_THIS_SESSION = 0, 0
 
 
 class GUID(ctypes.Structure):
@@ -59,6 +64,25 @@ class NOTIFYICONDATAW(ctypes.Structure):
         ("szInfoTitle", w.WCHAR * 64), ("dwInfoFlags", w.DWORD), ("guidItem", GUID),
         ("hBalloonIcon", w.HICON),
     ]
+
+
+def _guid(text: str) -> GUID:
+    a, b, c, d, e = text.split("-")
+    tail = bytes.fromhex(d + e)
+    return GUID(int(a, 16), int(b, 16), int(c, 16), (w.BYTE * 8)(*[x if x < 128 else x - 256 for x in tail]))
+
+
+GUID_CONSOLE_DISPLAY_STATE = _guid("6FE69556-704A-47A0-8F24-C28D936FDA47")  # 螢幕開／關／變暗
+
+
+class POWERBROADCAST_SETTING(ctypes.Structure):
+    _fields_ = [("PowerSetting", GUID), ("DataLength", w.DWORD), ("Data", ctypes.c_ubyte * 1)]
+
+
+class SYSTEM_POWER_STATUS(ctypes.Structure):
+    _fields_ = [("ACLineStatus", ctypes.c_ubyte), ("BatteryFlag", ctypes.c_ubyte),
+                ("BatteryLifePercent", ctypes.c_ubyte), ("SystemStatusFlag", ctypes.c_ubyte),
+                ("BatteryLifeTime", w.DWORD), ("BatteryFullLifeTime", w.DWORD)]
 
 
 class NOTIFYICONIDENTIFIER(ctypes.Structure):
@@ -97,6 +121,13 @@ _sig(user32.DestroyMenu, w.BOOL, w.HMENU)
 _sig(user32.SetForegroundWindow, w.BOOL, w.HWND)
 _sig(user32.PostMessageW, w.BOOL, w.HWND, w.UINT, w.WPARAM, w.LPARAM)
 _sig(user32.FindWindowW, w.HWND, w.LPCWSTR, w.LPCWSTR)
+_sig(user32.SystemParametersInfoW, w.BOOL, w.UINT, w.UINT, ctypes.c_void_p, w.UINT)
+_sig(user32.RegisterPowerSettingNotification, w.HANDLE, w.HANDLE, ctypes.POINTER(GUID), w.DWORD)
+_sig(user32.UnregisterPowerSettingNotification, w.BOOL, w.HANDLE)
+_sig(kernel32.GetSystemPowerStatus, w.BOOL, ctypes.POINTER(SYSTEM_POWER_STATUS))
+wtsapi32 = ctypes.WinDLL("wtsapi32", use_last_error=True)
+_sig(wtsapi32.WTSRegisterSessionNotification, w.BOOL, w.HWND, w.DWORD)
+_sig(wtsapi32.WTSUnRegisterSessionNotification, w.BOOL, w.HWND)
 _sig(user32.GetCursorPos, w.BOOL, ctypes.POINTER(w.POINT))
 _sig(user32.GetWindowRect, w.BOOL, w.HWND, ctypes.POINTER(w.RECT))
 _sig(user32.GetDpiForSystem, w.UINT)
@@ -155,6 +186,20 @@ def acquire_single_instance(name: str) -> object | None:
     return handle
 
 
+def animations_enabled() -> bool:
+    """Windows 設定 → 協助工具 → 視覺效果 →「動畫效果」。關了就不轉圖示（尊重無障礙設定）。"""
+    value = w.BOOL(1)
+    if not user32.SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, ctypes.byref(value), 0):
+        return True
+    return bool(value.value)
+
+
+def battery_saver_on() -> bool:
+    """省電模式（SystemStatusFlag == 1）。"""
+    status = SYSTEM_POWER_STATUS()
+    return bool(kernel32.GetSystemPowerStatus(ctypes.byref(status))) and status.SystemStatusFlag == 1
+
+
 # 已在執行時再啟動一次：新的那份送這個訊息給舊的那份，讓它打開卡片（不然畫面上什麼都沒發生）
 ACTIVATE_MESSAGE = "AiQuotaTray.Activate"
 
@@ -183,6 +228,7 @@ MenuItem = tuple[int | None, str, bool, bool]
 class TrayIcon:
     """on_event(kind, x, y)：kind 是 popup_open / popup_close / context_menu / select，
     balloon_click（點了通知）、resume（睡眠喚醒）、activate（又被啟動一次，見 activate_running_instance），
+    lock／unlock（鎖定畫面）、display_off／display_on（螢幕關閉；變暗算開著），
     以及 quit（有人對隱藏視窗送 WM_CLOSE，例如安裝程式要關掉我們）。
     座標是實體像素（Qt 6 預設 Per-Monitor DPI aware v2）。"""
 
@@ -193,6 +239,7 @@ class TrayIcon:
         self._tooltip = tooltip
         self._hicon = None
         self._balloon_hicon = None
+        self._frames: list[int] = []  # 動畫畫格的 HICON（set_frames）；_hicon 仍是靜態的品牌圖示
         self._hinst = kernel32.GetModuleHandleW(None)
         self._wndproc = WNDPROC(self._proc)  # 要留參考，不然會被 GC 掉
         self._taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
@@ -208,6 +255,10 @@ class TrayIcon:
         if not self.hwnd:
             raise ctypes.WinError(ctypes.get_last_error())
         self._added = False
+        # 鎖定畫面、螢幕關閉時停掉圖示動畫。註冊失敗不影響其他功能，只是那種情況下不會停轉
+        wtsapi32.WTSRegisterSessionNotification(self.hwnd, NOTIFY_FOR_THIS_SESSION)
+        self._display_notify = user32.RegisterPowerSettingNotification(
+            self.hwnd, ctypes.byref(GUID_CONSOLE_DISPLAY_STATE), DEVICE_NOTIFY_WINDOW_HANDLE)
 
     # ---------- Shell_NotifyIcon ----------
 
@@ -236,6 +287,29 @@ class TrayIcon:
             self._add()
         if old:
             user32.DestroyIcon(old)
+
+    def set_frames(self, pngs: list[bytes], size: int) -> None:
+        """預先把動畫畫格轉成 HICON（每張一次，之後只換不建）。"""
+        self._destroy_frames()
+        self._frames = [hicon_from_png(png, size) for png in pngs]
+
+    def show_frame(self, index: int) -> None:
+        """換成第 index 張畫格。只帶 NIF_ICON：tooltip 不重送。"""
+        if not self._added or not self._frames:
+            return
+        nid = self._data(NIF_ICON)
+        nid.hIcon = self._frames[index % len(self._frames)]
+        shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(nid))
+
+    def show_static(self) -> None:
+        """動畫停下來時換回靜態的品牌圖示。"""
+        if self._added:
+            shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self._data(NIF_ICON)))
+
+    def _destroy_frames(self) -> None:
+        for hicon in self._frames:
+            user32.DestroyIcon(hicon)
+        self._frames = []
 
     def set_tooltip(self, text: str) -> None:
         """不會顯示成原生 tooltip，給螢幕閱讀器用。"""
@@ -306,7 +380,12 @@ class TrayIcon:
             if getattr(self, attr):
                 user32.DestroyIcon(getattr(self, attr))
                 setattr(self, attr, None)
+        self._destroy_frames()
         if self.hwnd:
+            wtsapi32.WTSUnRegisterSessionNotification(self.hwnd)
+            if self._display_notify:
+                user32.UnregisterPowerSettingNotification(self._display_notify)
+                self._display_notify = None
             user32.DestroyWindow(self.hwnd)
             self.hwnd = None
             user32.UnregisterClassW(self.CLASS_NAME, self._hinst)
@@ -328,7 +407,16 @@ class TrayIcon:
             if msg == WM_POWERBROADCAST:
                 if wparam in (PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND):
                     self._on_event("resume", 0, 0)
+                elif wparam == PBT_POWERSETTINGCHANGE and lparam:
+                    setting = POWERBROADCAST_SETTING.from_address(lparam)
+                    if bytes(setting.PowerSetting) == bytes(GUID_CONSOLE_DISPLAY_STATE):
+                        # 0＝關、1＝開、2＝變暗（變暗還看得到，當作開著）
+                        self._on_event("display_off" if setting.Data[0] == 0 else "display_on", 0, 0)
                 return 1  # TRUE：允許
+            if msg == WM_WTSSESSION_CHANGE:
+                if wparam in (WTS_SESSION_LOCK, WTS_SESSION_UNLOCK):
+                    self._on_event("lock" if wparam == WTS_SESSION_LOCK else "unlock", 0, 0)
+                return 0
             if msg == WM_CLOSE:
                 self._on_event("quit", 0, 0)
                 return 0  # 不交給 DefWindowProc：視窗由 close() 統一銷毀

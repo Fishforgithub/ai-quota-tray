@@ -11,7 +11,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from ai_quota_tray import alerts, config, startup  # noqa: E402
+from ai_quota_tray import alerts, config, display_version, startup  # noqa: E402
 from ai_quota_tray.card import header_note, is_dimmed  # noqa: E402
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE,  # noqa: E402
                                  ProviderState, carry_over, make_window)
@@ -344,7 +344,7 @@ class SettingsDialogTest(unittest.TestCase):
     def test_service_choices_and_source_descriptions(self):
         from PySide6.QtWidgets import QLabel, QRadioButton
         dlg, applied = self.make()
-        self.assertEqual(dlg.windowTitle(), "AI Usage Meter · 服務設定")
+        self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · 服務設定（Ver. {display_version()}）")
         self.assertFalse(dlg.windowIcon().isNull())
         self.assertEqual(dlg.selected_enabled(), {"claude", "codex"})
         self.assertNotIn("grok", dlg.checks)

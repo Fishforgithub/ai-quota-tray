@@ -138,7 +138,8 @@ class ActivateMessageTest(unittest.TestCase):
         with mock.patch.object(win32tray.TrayIcon, "CLASS_NAME", "AiQuotaTrayWindow-unittest"):
             self.assertFalse(win32tray.activate_running_instance())  # 還沒有視窗
             events = []
-            tray = win32tray.TrayIcon(lambda kind, x, y: events.append(kind))
+            # 註冊螢幕狀態通知時 Windows 會立刻送一次目前狀態（display_on），這裡只看 activate
+            tray = win32tray.TrayIcon(lambda kind, x, y: kind == "activate" and events.append(kind))
             try:
                 self.assertTrue(win32tray.activate_running_instance())
                 for _ in range(20):

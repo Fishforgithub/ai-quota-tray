@@ -32,6 +32,27 @@
 
 IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但可從 App 存取的內容，例如 Netflix 的電影、Amazon 的商品、生成式 AI 內容」）答**否**：卡片顯示的是用量數字，不是這類內容；設定視窗的自家推廣橫幅屬於廣告，而問卷開頭明寫「回答時不應該考慮廣告內容」。
 
+## 0.6 Submission 2：0.1.1.0（2026-09-26）
+
+v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決定首波就要有下面這些功能 → 維持上架、馬上送 0.1.1.0 更新（Partner Center 同時只能有一份提交，暫時下架反而要多送兩次）。
+
+**這一版改了什麼**：系統匣圖示霓虹外圈旋轉（一律開著，鎖定／螢幕關閉／省電／Windows 關動畫時自停；業主決定不給開關）、Store 版「發現新版本」通知＋設定右上「版本可更新」（直通 Store）、設定標題顯示版號、設定底部隱私權政策／官網連結＋無隸屬聲明、語言下拉改圓角、exe 版本資訊、MSIX 檔名改用產品名。
+**要一起更新的**：隱私權政策（檢查更新、兩個新連結；fish-zero-web）、商店說明與功能（下面 §2／§3 已改）、截圖（設定視窗變了，`store_shots.py` 重拍）、其他測試資訊（§6 的英文已改，要重貼）。
+
+**此版本的新增功能**（What's new，≤1500 字元）
+
+> English：
+> - The ring around the tray icon now slowly rotates, and pauses on its own when the screen is locked or off, in battery saver, or when Windows animation effects are turned off.
+> - You get a notification when a new version is available, and Settings shows an "Update available" button that opens the Microsoft Store.
+> - The Settings window shows the version number and links to the privacy policy and website.
+> - A cleaner language menu in Settings.
+
+> 繁體中文：
+> - 系統匣圖示的霓虹外圈會慢慢旋轉；鎖定畫面、螢幕關閉、省電模式，或 Windows 關掉「動畫效果」時會自動停下。
+> - 有新版本時會通知你，設定視窗也會出現「版本可更新」按鈕，直接開啟 Microsoft Store。
+> - 設定視窗顯示版號，並加上隱私權政策與官網連結。
+> - 設定視窗的語言選單改得更簡潔。
+
 ## 1. 屬性
 
 | 欄位 | 建議 | 理由 |
@@ -63,10 +84,16 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 > Claude Code, Codex, Antigravity CLI, and GitHub Copilot. Claude Code and Codex are on by default; turn on the others in Settings. Each tool must be installed and signed in on your PC.
 >
 > Your sign-in stays untouched
-> AI Usage Meter never reads or stores your passwords or sign-in tokens. When it needs live numbers, it asks the official tool that is already signed in on your computer to look them up. In the background it only reads local records, without using the network, and it checks online only when you open the card.
+> AI Usage Meter never reads or stores your passwords or sign-in tokens. When it needs live numbers, it asks the official tool that is already signed in on your computer to look them up. In the background it only reads local records, and it checks the tools online only when you open the card.
 >
 > A heads-up before you run out
 > When any limit drops below 10%, you get one Windows notification, and only one per reset period. If a lookup fails or the numbers are out of date, that section turns grey and shows how old it is, so old numbers are never passed off as current ones.
+>
+> A little neon in your tray
+> The ring around the icon slowly rotates. It pauses on its own when the screen is locked or off, in battery saver, or when Windows animation effects are turned off.
+>
+> Always up to date
+> When a new version is available in the Microsoft Store, you get a notification, and Settings shows a button that takes you straight to it.
 >
 > Private by design
 > No server of its own, no analytics, no third-party ads, no account. Nothing is sent to the developer. The only ad is a small banner for another app by the same developer at the bottom of the Settings window.
@@ -85,8 +112,10 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 6. One notification when a limit drops below 10%, once per reset period
 7. Grey, time-stamped sections when numbers are out of date
 8. No server, no analytics, no third-party ads, no account
-9. Starts with Windows (optional)
-10. English and Traditional Chinese interface
+9. Slowly rotating neon ring that pauses when the screen is locked or off
+10. Notifies you when a new version is available
+11. Starts with Windows (optional)
+12. English and Traditional Chinese interface
 
 **Search terms**（最多 7 個、各 ≤40 字元、合計 ≤21 個單字，不顯示在頁面上）：
 `AI usage`／`usage limit`／`rate limit`／`AI quota`／`system tray`／`developer tools`／`coding assistant`
@@ -113,10 +142,16 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 > Claude Code、Codex、Antigravity CLI、GitHub Copilot。預設啟用 Claude Code 與 Codex，其他的到設定裡勾選。你需要先在電腦上安裝並登入對應的工具。
 >
 > 不碰你的登入
-> AI Usage Meter 不讀取、不保存你的密碼或登入權杖。需要即時數字時，它請你電腦上已經登入的官方工具自己去查。平常在背景只讀本機紀錄、不連網，只有在你打開卡片時才查詢雲端。
+> AI Usage Meter 不讀取、不保存你的密碼或登入權杖。需要即時數字時，它請你電腦上已經登入的官方工具自己去查。平常在背景只讀本機紀錄，只有在你打開卡片時才向各工具查詢雲端。
 >
 > 快用完時提醒你
 > 任何一個額度剩不到 10%，就用 Windows 通知提醒一次，同一個重置週期不會重複提醒。查詢失敗或資料過時，那一塊會變灰並標示是多久以前的數字，不會把舊數字當成現在的。
+>
+> 會動的霓虹圖示
+> 系統匣圖示外圈的霓虹會慢慢旋轉；鎖定畫面、螢幕關閉、省電模式，或 Windows 關掉「動畫效果」時會自動停下。
+>
+> 有新版本就告訴你
+> Microsoft Store 上有新版本時會跳通知，設定視窗也會出現直通 Store 的按鈕。
 >
 > 隱私優先
 > 沒有自己的伺服器、沒有分析追蹤、沒有第三方廣告，也不需要註冊帳號。不會把任何資料傳給開發者。唯一的廣告是設定視窗底部一個推廣開發者另一款 App 的小橫幅。
@@ -135,8 +170,10 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 6. 額度剩不到 10% 時通知一次，每個重置週期只通知一次
 7. 資料過時會變灰並標示時間
 8. 沒有伺服器、沒有分析追蹤、沒有第三方廣告、不需要帳號
-9. 可設定開機自動啟動
-10. 繁體中文／English 介面
+9. 霓虹外圈慢慢旋轉，鎖定畫面或螢幕關閉時自動停下
+10. 有新版本時通知你
+11. 可設定開機自動啟動
+12. 繁體中文／English 介面
 
 **搜尋字詞**：`AI 用量`／`用量`／`額度`／`系統匣`／`開發人員工具`／`AI usage`／`usage limit`
 
@@ -166,6 +203,7 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 > 3. Starting official command-line tools that the user installed and signed in to, as child processes: Codex CLI ("codex app-server", over stdin/stdout), Antigravity CLI ("agy -p /usage"), and the GitHub Copilot SDK runtime. These tools handle sign-in themselves; the app never reads their credentials or tokens. When it closes, the app makes sure the Codex processes it started exit: it closes their input first, and uses taskkill /T only if they are still running after 2 seconds.
 > 4. Optional, only after the user presses "Install" and confirms: pointing Claude Code's status line setting (%USERPROFILE%\.claude\settings.json, backed up first) to a small script in %USERPROFILE%\.claude\ai-quota-tray\ that saves the usage fields. "Remove" restores the original setting.
 > 5. When the user turns on GitHub Copilot, the official Copilot SDK downloads its runtime from GitHub into %LOCALAPPDATA%\github-copilot-sdk.
+> 6. It animates its notification area icon by swapping pre-rendered frames (NIM_MODIFY), and registers for session lock (WTSRegisterSessionNotification) and display power (RegisterPowerSettingNotification) notifications so the animation pauses when the screen is locked or off. It also asks the Microsoft Store whether an update is available (StoreContext.GetAppAndOptionalStorePackageUpdatesAsync) and, only if the user clicks, opens the Store product page.
 >
 > The app runs as the current user (asInvoker) and never asks for administrator rights. It installs no drivers or services, does not inject into or modify other processes, reads no passwords, tokens, or credential stores, has no server of its own, and sends no data to the developer. Start with Windows uses the windows.startupTask extension.
 
@@ -177,6 +215,7 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 > 3. 以子程序啟動使用者自己安裝、登入的官方 CLI：`codex app-server`（stdin/stdout）、`agy -p /usage`、Copilot SDK runtime。登入由它們自己處理，本 App 不讀它們的憑證或權杖；關閉時先關掉 Codex 的輸入讓它自己結束，2 秒後還在才用 `taskkill /T` 結束自己啟動的程序樹。
 > 4. 選用，使用者按「安裝」並確認後才做：把 Claude Code 的狀態列設定（先備份）指向 `.claude\ai-quota-tray\` 裡的小程式，只存額度欄位；按「移除」還原。
 > 5. 使用者啟用 Copilot 時，官方 SDK 會從 GitHub 下載 runtime 到 `%LOCALAPPDATA%\github-copilot-sdk`。
+> 6. 系統匣圖示動畫：預先算好的畫格用 `NIM_MODIFY` 換圖；註冊鎖定畫面（`WTSRegisterSessionNotification`）與螢幕電源（`RegisterPowerSettingNotification`）通知，鎖定或螢幕關閉時停轉。另外向 Microsoft Store 查詢有沒有更新（`StoreContext`），使用者點了才開 Store 商品頁。
 >
 > 以目前使用者身分執行（asInvoker）、不要求系統管理員；不裝驅動或服務、不注入或修改其他程序、不讀密碼／權杖／認證存放區、沒有自己的伺服器、不傳資料給開發者。開機啟動走 `windows.startupTask`。
 
@@ -202,7 +241,7 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 >
 > In demo mode the app makes no queries and starts no other tools. No sign-in or account is needed, and there are no in-app purchases.
 >
-> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window switches the interface language between English and Traditional Chinese.
+> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window switches the interface language between English and Traditional Chinese, and links to the privacy policy and website. The ring around the tray icon slowly rotates; it pauses when the screen is locked or off, in battery saver, or when Windows animation effects are off.
 
 **中文對照（給業主核對，不用貼）**
 
@@ -215,7 +254,7 @@ IARC「線上內容」題（「是否提供或推廣不屬於初始下載、但�
 >
 > 示範模式下不查詢任何服務、不啟動其他工具。不需要登入或帳號，也沒有內購。
 >
-> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換中英文介面。
+> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換中英文介面，也有隱私權政策與官網連結。系統匣圖示的外圈會慢慢旋轉，鎖定畫面、螢幕關閉、省電模式或 Windows 關掉動畫效果時會停下。
 
 ⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字時，這段要一起改。
 

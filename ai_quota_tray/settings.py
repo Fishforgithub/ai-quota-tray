@@ -12,7 +12,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
-from . import claude_hook, i18n
+from . import claude_hook, display_version, i18n, store_update
 from .i18n import tr
 from .icon import ASSETS, BRAND_PNG
 from .model import DISPLAY_NAME
@@ -29,6 +29,13 @@ PALETTE = {
               "chevron": "chevron-down-light.svg"},
 }
 STORE_URL = "https://apps.microsoft.com/detail/9MVGRHJJHX0M"
+# 設定視窗底部的連結（隱私權政策 §3「其他連線」有列）；英文介面開 /en/ 那一份
+SITE_LINKS = {
+    "privacy": {i18n.ZH: "https://fish-zero.com/aiusagemeter-privacy",
+                i18n.EN: "https://fish-zero.com/en/aiusagemeter-privacy"},
+    "website": {i18n.ZH: "https://fish-zero.com/aiusagemeter",
+                i18n.EN: "https://fish-zero.com/en/aiusagemeter"},
+}
 DESKPET_BANNER = ASSETS / "deskpet-banner.webp"
 
 
@@ -72,6 +79,10 @@ def _style(p: dict[str, str]) -> str:
                                   border-radius: 6px; font-weight: bold; min-width: 0;
                                   min-height: 34px; padding: 0 8px; }}
         QPushButton#promoButton:hover {{ background: #ffe5aa; }}
+        QPushButton#updateButton {{ color: white; background: {p['accent']}; border: none;
+                                   font-weight: bold; min-width: 0; padding: 0 16px; }}
+        QPushButton#updateButton:hover {{ background: {p['accent_hover']}; }}
+        QLabel#links, QLabel#disclaimer {{ color: {p['dim']}; font-size: 8pt; }}
     """
 
 
@@ -84,12 +95,14 @@ def _line() -> QFrame:
 
 class SettingsDialog(QDialog):
     def __init__(self, enabled: set[str], language: str,
-                 on_apply: Callable[[set[str], str, bool], None], demo: bool = False):
+                 on_apply: Callable[[set[str], str, bool], None], demo: bool = False,
+                 update_available: bool = False):
         super().__init__(None, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setWindowIcon(QIcon(str(BRAND_PNG)))
         self.setStyleSheet(_style(_palette()))
-        # Windows 的標題列約 37px；client 高 653px 對應參考圖的外框約 690px。
-        self.setFixedSize(590, 653)
+        # Windows 的標題列約 37px；原本 client 高 653px 對應參考圖的外框約 690px，
+        # 2026-09-26 多了底部連結那一行（＋約 30px）。
+        self.setFixedSize(590, 683)
         self._initial_enabled = set(enabled)
         self._initial_language = language if language in i18n.LANGUAGES else i18n.AUTO
         self._initial_demo = demo
@@ -101,7 +114,17 @@ class SettingsDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(31, 27, 31, 24)
         root.setSpacing(0)
-        root.addWidget(self._text(QLabel(), "settings.heading", "heading"))
+        head = QHBoxLayout()
+        head.addWidget(self._text(QLabel(), "settings.heading", "heading"))
+        head.addStretch(1)
+        # Store 查到有新版才出現（store_update.py），按下去開 Store 商品頁讓使用者按更新
+        self.update_button = self._text(QPushButton(), "settings.update", "updateButton")
+        self.update_button.setCursor(Qt.PointingHandCursor)
+        self.update_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(store_update.STORE_PDP_URI)))
+        self.update_button.setVisible(update_available)
+        head.addWidget(self.update_button)
+        root.addLayout(head)
         root.addSpacing(7)
 
         top = QHBoxLayout()
@@ -126,7 +149,19 @@ class SettingsDialog(QDialog):
         root.addSpacing(28)
         root.addWidget(self._promo())
 
-        root.addSpacing(16)
+        root.addSpacing(10)
+        # 隱私權政策、官網與無隸屬聲明：畫面上直接出現各家產品名，要說清楚我們不是官方
+        footer = QHBoxLayout()
+        self.links = QLabel()
+        self.links.setObjectName("links")
+        self.links.setTextFormat(Qt.RichText)
+        self.links.setOpenExternalLinks(True)
+        footer.addWidget(self.links)
+        footer.addStretch(1)
+        footer.addWidget(self._text(QLabel(), "settings.disclaimer", "disclaimer"))
+        root.addLayout(footer)
+
+        root.addSpacing(14)
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
         # 給 Store 審核人員、或還沒裝任何 CLI 的人先看看長什麼樣子（demo.py）
@@ -247,11 +282,19 @@ class SettingsDialog(QDialog):
 
     def _retranslate(self, *_args) -> None:
         lang = self.preview_language()
-        self.setWindowTitle(tr("settings.title", lang))
+        self.setWindowTitle(tr("settings.title", lang) + tr("settings.version", lang, v=display_version()))
         for widget, key in self._texts:
             widget.setText(tr(key, lang))
         self.language.setItemText(0, tr("settings.lang.auto", lang))
+        link_color = _palette()["accent_hover"]
+        self.links.setText(" · ".join(
+            f'<a href="{SITE_LINKS[name][lang]}" style="color:{link_color}; text-decoration:none">'
+            f'{tr(f"settings.link.{name}", lang)}</a>' for name in ("privacy", "website")))
         self._refresh_hook()
+
+    def set_update_available(self, available: bool) -> None:
+        """設定視窗開著時才查到新版：直接把按鈕叫出來。"""
+        self.update_button.setVisible(available)
 
     # ---------- Claude 狀態列擷取 ----------
 

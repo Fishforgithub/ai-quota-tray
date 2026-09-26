@@ -64,25 +64,22 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 - **啟動時的可見回應（2026-09-26，為了 Store 審核）**：App 沒有主視窗，原本從開始功能表啟動後畫面上什麼都沒出現、已在執行時再點一次新行程直接結束，審核人員會以為沒啟動。現在：①第一次啟動跳歡迎通知（`welcome.*` 字串，只一次，config 的 `welcomed`；在 `run()` 觸發而不是 `TrayApp` 建構式，免得測試寫到真的設定檔），**不帶 `NIIF_RESPECT_QUIET_TIME`**（全新電腦登入後第一小時是 quiet time，審核 VM 會碰到；這則是回應使用者自己的動作）；②已在執行時再啟動一次 → `win32tray.activate_running_instance()` 用 `FindWindowW(AiQuotaTrayWindow)`＋`RegisterWindowMessage("AiQuotaTray.Activate")` 請原本那份打開卡片，新行程 exit 0；③點通知或 activate 打開的卡片先停留 `HOLD_OPEN_S`（8 秒），滑鼠進過卡片或圖示後回到 0.4 秒規則（否則滑鼠在開始功能表那邊，卡片一開就被關掉）。`tests/test_launch.py`（含真的建隱藏視窗、真的 PostMessage；測試會換掉 `CLASS_NAME`，免得送到本機正在跑的那份）。實測：venv 版（`LOCALAPPDATA` 指到暫存）與封裝版（loose registration、從 `shell:AppsFolder\<PFN>!AiQuotaTray` 啟動＝開始功能表的路徑）都截圖看過；封裝版通知的來源顯示「AI Usage Meter」，venv／打包版 exe 顯示 AUMID `AiQuotaTray.App`（個人版才有，沒處理）。
 
-### 下一版（v0.2）規劃（業主 2026-09-26 定）
+### 0.1.1（2026-09-26，v0.1.0 上架不到一小時就決定首波要有這些，送 Submission 2 更新）
 
-1. **Store 版「發現新版本」提示**（照 desk-pet `src-tauri/src/store_update.rs` 的做法，見 `desk-pet/docs/store-listing.md` 的「Store 版的『有新版』提示」）：
-   - 有套件身分時用 WinRT `StoreContext.GetAppAndOptionalStorePackageUpdatesAsync()`（`winrt-Windows.Services.Store`）問 Store；個人版（沒有套件身分）不查。
-   - 有新版 → 系統匣通知「發現新版本」（點通知開設定）；設定視窗右上角多一顆「**版本可更新**」按鈕，直接開 `ms-windows-store://pdp/?productid=9PLDWKRFDGDC`，使用者在 Store 按更新。沒有新版時按鈕不顯示。
-   - 設定視窗標題加版號：`AI Usage Meter · 服務設定（Ver. 0.1.0.0）`（業主給的示意圖）。版號有套件身分時取 `Package.Current.Id.Version`，否則讀 pyproject／`__version__`，四段式與 MSIX 一致。⚠️ `test_p4`／`test_i18n` 有測試逐字比對視窗標題，要一起改。
-   - desk-pet 實測的限制：API 拿到的 `Package.Id.Version` 是**已安裝版**，拿不到新版版號 → 文字一律寫「發現新版本」不寫版號；Partner Center 的「強制更新」OS 不會強制也不會提示；更新時 App 可能被關掉、裝完不保證重開（開機啟動下次登入會帶回來）。
-   - 通知別吵：每次啟動最多提示一次（拿不到新版版號，無法「每個版本一次」）。查詢頻率先定啟動時＋每 6 小時（desk-pet 是 25 分鐘，這個 App 不需要那麼勤）。
-   - 🔴 **隱私權政策與商店文案要一起改**：現在寫「App 自己不會連到任何伺服器」，檢查更新會連 Microsoft Store 的服務（只問有沒有更新、不送個人資料）。fish-zero-web 的兩份政策、`docs/site/` 副本、`docs/store-listing.md` 的說明與 runFullTrust 說明都要補一句。
-   - 🔴 **這功能要等帶著它的那一版裝到使用者手上，才能提示再下一版**：v0.1 的使用者只能靠 Store 自己的自動更新升到 v0.2。
-2. **設定視窗底部加「隱私權政策」「官網」連結＋無隸屬聲明**（業主 2026-09-26 同意）：放在版號旁邊，兩個小連結分別開 `https://fish-zero.com/aiusagemeter-privacy`／`https://fish-zero.com/aiusagemeter`（英文介面開 `/en/…`），再一行小字「非 Anthropic／OpenAI／GitHub／Google 官方產品」（中英文走 `i18n.py`）。
-   Store 政策 7.20 的 10.5.1 只要求 Partner Center 填政策網址，App 內連結是「may」——做這個不是為了過審，而是：加回 Grok（讀 token 的例外）時使用者要點得到政策、App 畫面直接顯示各家產品名要有無隸屬聲明、使用者找得到支援信箱。
-   ⚠️ 設定視窗目前的外部連結只有桌寵橫幅（`STORE_URL`），多了這兩個要一起寫進隱私權政策 §3「其他連線」，也要進 `store_shots.py` 重拍的截圖。
-3. **xAI（Grok）**：看回信決定（見上方 📨）。
-4. ✅ 已先做（2026-09-26，會跟 v0.2 一起出去）：設定視窗的語言下拉改成整塊圓角＋自己的 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`），原本右邊是 Windows 原生的方塊下拉鈕、凸出一截；寬度改成依內容（寫死 108px 時英文「System default」被切掉）。
+- **霓虹外圈動畫**（`icon_anim.py`）：只轉 app.png 的外圈那一環（圓心 (261, 260.5)、半徑 140～222 羽化 5；遮罩踩過的坑寫在模組開頭），60 張、6 秒一圈，啟動時在目標尺寸 4 倍上算好（一種尺寸約 0.1 秒）→ `TrayIcon.set_frames`／`show_frame`（NIM_MODIFY 只帶 NIF_ICON）。
+  **業主定：一律開著、不給開關**（原本做了「圖示動畫」勾選，業主看過後拿掉）。自動停轉：鎖定畫面（`WTSRegisterSessionNotification` → lock／unlock）、螢幕關閉（`RegisterPowerSettingNotification(GUID_CONSOLE_DISPLAY_STATE)`，變暗算開著）、省電模式與 Windows「動畫效果」（沒有通知可收，`ANIM_CHECK_INTERVAL_S` 10 秒看一次）。停下時 `show_static` 回品牌圖示。
+  💡 註冊螢幕狀態通知時 Windows 會**立刻**送一次目前狀態（display_on）——測試要只看自己關心的事件。
+- **Store 版「發現新版本」**（`store_update.py`）：有套件身分才查（啟動 30 秒後、之後每 6 小時，背景執行緒），WinRT `StoreContext.get_app_and_optional_store_package_updates_async().size > 0`；查不到回 None 不動作。有新版 → 每次啟動最多一則通知（點通知開設定，`_last_balloon` 分辨通知種類）＋設定右上「版本可更新」→ `ms-windows-store://pdp/?productid=9PLDWKRFDGDC`。desk-pet 的限制照樣：拿不到新版版號、強制更新不會強制、更新時 App 可能被關掉。
+  測試／截圖用 `AIQT_FAKE_UPDATE=1`（個人版沒有 Store 可問，設了才看得到）。⚠️ **真的從 Store 更新的流程還沒實測**：要等 0.1.1 上架後、再有下一版時才驗得到（v0.1.0 沒有這功能）。
+- **設定視窗**：標題 `AI Usage Meter · 服務設定（Ver. 0.1.1.0）`（`display_version()`＝`__version__`＋`.0`，`VersionTest` 檢查與 pyproject 一致）；底部「隱私權政策 · 官網」連結（英文介面開 `/en/`）＋「非 Anthropic、OpenAI、GitHub、Google 官方產品」；高度 653 → 683。語言下拉：drop-down 透明＋自製 SVG 箭頭（`assets/chevron-down-{dark,light}.svg`，打包版有 qsvg／Qt6Svg），寬度依內容。
+  💡 樣式表的 `min-width` 會蓋過 `setFixedWidth`（按鈕寬要改兩邊一起改）。
+- 隱私權政策同步：「App 自己不會連到任何伺服器」改成「沒有自己的伺服器、不傳資料給開發者」，補「檢查更新」與設定視窗兩個連結（fish-zero-web `5758044`、`51a9aba`，smoke 測試鎖住）。商店說明／功能／此版本新增功能／runFullTrust／認證注意事項見 `docs/store-listing.md` §0.6。
+- `tests/test_anim_update.py`（畫格只動外圈、停轉條件、Store 檢查、通知只一次且點了開設定、設定新元件）；unittest 156 過。
+- 下一版：**xAI（Grok）** 看回信（見下方 📨）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
-> ⏸️ **2026-09-26 收工時的狀態**：v0.1.0.0 已送 Microsoft Store 認證（Submission 1，明細 `docs/store-listing.md` §0.5），等結果；送出的套件是 `build\msix\AiUsageMeter-0.1.0.0-x64.msix`（WACK PASS 14:19）。程式與文件都已 push 到 GitHub（`main`），隱私權政策／產品頁在 fish-zero.com 上線（含「沒有第三方廣告」更正）。unittest 141 過。本機沒有任何 MSIX 註冊；個人版平常跑 `dist\AiQuotaTray\AiQuotaTray.exe`，開機啟動（HKCU Run）指向 venv 的 `pythonw.exe -m ai_quota_tray tray`。下一步：等認證結果（退件就照原因修）→ v0.2（上方規劃）。
+> ⏸️ **2026-09-26 的狀態**：v0.1.0.0 已上架（Submission 1，不到一小時就過）。0.1.1.0 程式與文件已完成（上方 0.1.1 段），業主在本機看過開發版 OK；接下來打包 → WACK → Submission 2（明細 `docs/store-listing.md` §0.6）。
 
 > 📨 **xAI（Grok）詢問中**：業主 2026-09-26 12:44 寄信給 `sales@x.ai`，問第三方 App 能不能讀 Grok Build CLI 的本機 token、呼叫 `cli-chat-proxy.grok.com/v1/billing` 等端點來顯示使用者自己的用量，或有沒有官方介面可用。業主決定：**回覆 OK 才在下一版加回來**。⚠️ 信裡附的 `blob/main/.../providers/grok.py` 已經 404（P5 `236e126` 刪掉了）；對方要看程式碼時改給固定版本 `https://github.com/Fishforgithub/ai-quota-tray/blob/7376facef447ea03969deed62bfe4aaf9a6a30f2/ai_quota_tray/providers/grok.py`（實測 200）。信裡的產品名是舊的 AI Quota Tray。🔴 **加回來不只是改程式**：隱私權政策、商店說明與功能（「不讀取、不保存登入權杖」）、runFullTrust 說明（「reads no tokens」）、認證注意事項、產品頁都寫死了「不碰 token」，Grok 若仍是讀 token 的做法，這些都要改成「Grok 例外、需使用者自行啟用」並重新送審；若 xAI 給的是官方 API／CLI 指令，就能維持「不碰 token」的說法。
 

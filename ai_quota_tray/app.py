@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -31,7 +32,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from . import config, demo, i18n, icon, startup, win32tray
+from . import config, demo, i18n, icon, icon_anim, startup, store_update, win32tray
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
@@ -52,6 +53,7 @@ RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
 HIDE_DELAY_S = 0.4
 HOLD_OPEN_S = 8.0  # 不是 hover 打開的卡片先停留這麼久（見模組說明）
+ANIM_CHECK_INTERVAL_S = 10  # 多久看一次 Windows「動畫效果」與省電模式
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
 APP_USER_MODEL_ID = "AiQuotaTray.App"
@@ -95,11 +97,15 @@ class Poller(QObject):
 
 class TrayApp(QObject):
     copilot_ready = Signal()  # Copilot runtime 下載完成（背景執行緒 emit，排進主執行緒）
+    update_checked = Signal(object)  # store_update.check() 的結果（背景執行緒 emit）
 
     def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False):
         super().__init__()
         self.language = language  # 設定值（auto／zh-TW／en）；實際語言在 i18n
         self.demo = demo_mode  # 示範模式（demo.py）：只顯示範例資料，不查詢任何服務、不發通知
+        self.update_available = False  # Store 上有新版（store_update.py）
+        self._update_notified = False  # 每次啟動最多提示一次（拿不到新版版號，無法「每版一次」）
+        self._last_balloon: str | None = None  # 最後一則通知是什麼，點通知時決定打開卡片還是設定
         self.states: dict[str, ProviderState] = {}
         self.alerts = AlertStore()
         self.tray = win32tray.TrayIcon(self._on_tray_event)
@@ -138,6 +144,36 @@ class TrayApp(QObject):
         self._resume_timer.timeout.connect(self._poll_local)
 
         self.tray.set_icon(icon.brand_png(self.icon_size), self.icon_size)
+
+        # 霓虹外圈動畫：畫格啟動時算好（一種尺寸約 0.1 秒），之後只換圖示
+        self.tray.set_frames(icon_anim.frame_pngs(self.icon_size), self.icon_size)
+        self._frame = 0
+        self._anim_blockers: set[str] = set()  # locked／display_off
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(icon_anim.frame_interval_ms())
+        self._anim_timer.timeout.connect(self._next_frame)
+        # Windows「動畫效果」、省電模式沒有通知可收，定期看一次
+        self._anim_check_timer = QTimer(self)
+        self._anim_check_timer.setInterval(ANIM_CHECK_INTERVAL_S * 1000)
+        self._anim_check_timer.timeout.connect(self._update_animation)
+        self._anim_check_timer.start()
+        self._timers.append(self._anim_check_timer)
+        self._update_animation()
+
+        # Store 版查新版：啟動後等一下先查一次，之後定期查。個人版沒有 Store 可以問
+        self.update_checked.connect(self._on_update_checked)
+        if store_update.can_check():
+            first = QTimer(self)
+            first.setSingleShot(True)
+            first.setInterval(store_update.FIRST_CHECK_DELAY_S * 1000)
+            first.timeout.connect(self._check_update)
+            first.start()
+            repeat = QTimer(self)
+            repeat.setInterval(store_update.CHECK_INTERVAL_S * 1000)
+            repeat.timeout.connect(self._check_update)
+            repeat.start()
+            self._timers += [first, repeat]
+
         self._poll_local()
         if "copilot" in self.enabled and not self.demo:
             self._prepare_copilot()  # 新電腦上設定檔已勾 Copilot：先把 runtime 抓好
@@ -230,7 +266,7 @@ class TrayApp(QObject):
         due = self.alerts.take_due([state], now)
         if due:
             # 一次只能掛一則，同一家兩個視窗都低時合併
-            self.tray.show_balloon(due[0][0], "\n".join(body for _, body in due))
+            self._notify("alert", due[0][0], "\n".join(body for _, body in due))
 
     def _update_views(self) -> None:
         self.tray.set_tooltip(icon.tooltip([s for _, s in self._card_states() if s is not None]))
@@ -285,10 +321,18 @@ class TrayApp(QObject):
         log.debug("tray event %s (%d, %d)", kind, x, y)
         if kind in ("popup_open", "select"):
             self.show_card(x, y)
+        elif kind == "balloon_click" and self._last_balloon in ("update", "startup"):
+            self.open_settings()  # 「發現新版本」→ 設定裡有直通 Store 的按鈕
         elif kind in ("balloon_click", "activate"):
             self.show_card(x, y, hold=True)
         elif kind == "resume":
             self._resume_timer.start()
+        elif kind in ("lock", "display_off"):
+            self._anim_blockers.add("locked" if kind == "lock" else "display_off")
+            self._update_animation()
+        elif kind in ("unlock", "display_on"):
+            self._anim_blockers.discard("locked" if kind == "unlock" else "display_off")
+            self._update_animation()
         elif kind == "context_menu":
             self.hide_card()
             self._context_menu(x, y)
@@ -321,13 +365,54 @@ class TrayApp(QObject):
                 except startup.StartupBlocked as exc:
                     # MSIX 版：使用者在工作管理員／Windows 設定關掉過，App 不能自己打開
                     log.info("開機啟動被擋：%s", exc)
-                    self.tray.show_balloon(tr("startup.blocked_title"), tr("startup.blocked_body"))
+                    self._notify("startup", tr("startup.blocked_title"), tr("startup.blocked_body"))
         elif cmd == MENU_QUIT:
             QApplication.quit()
 
+    def _notify(self, kind: str, title: str, body: str, respect_quiet_time: bool = True) -> None:
+        """發通知並記下是哪一種：點通知時「發現新版本」要開設定，其他的開卡片。"""
+        self._last_balloon = kind
+        self.tray.show_balloon(title, body, respect_quiet_time=respect_quiet_time)
+
     def show_welcome(self) -> None:
         """第一次啟動：App 沒有主視窗，不說一聲會以為沒啟動。使用者自己啟動的，不受 quiet time 限制。"""
-        self.tray.show_balloon(tr("welcome.title"), tr("welcome.body"), respect_quiet_time=False)
+        self._notify("welcome", tr("welcome.title"), tr("welcome.body"), respect_quiet_time=False)
+
+    # ---------- 圖示動畫 ----------
+
+    def animation_should_run(self) -> bool:
+        # 業主 2026-09-26 定：一律開著、不給開關；只在下面這些情況自動停
+        return (not self._anim_blockers
+                and win32tray.animations_enabled() and not win32tray.battery_saver_on())
+
+    def _update_animation(self) -> None:
+        if self.animation_should_run():
+            if not self._anim_timer.isActive():
+                self._anim_timer.start()
+        elif self._anim_timer.isActive():
+            self._anim_timer.stop()
+            self.tray.show_static()  # 停下來時回到沒轉過的品牌圖示
+
+    def _next_frame(self) -> None:
+        self._frame = (self._frame + 1) % icon_anim.FRAMES
+        self.tray.show_frame(self._frame)
+
+    # ---------- Store 更新 ----------
+
+    def _check_update(self) -> None:
+        # 會連網：丟背景執行緒，結果用 signal 排回主執行緒
+        threading.Thread(target=lambda: self.update_checked.emit(store_update.check()),
+                         name="store-update", daemon=True).start()
+
+    def _on_update_checked(self, available: bool | None) -> None:
+        if available is None:
+            return  # 查不到：維持原狀，下次再查
+        self.update_available = available
+        if self._settings is not None and self._settings.isVisible():
+            self._settings.set_update_available(available)
+        if available and not self._update_notified:
+            self._update_notified = True
+            self._notify("update", tr("update.title"), tr("update.body"))
 
     # ---------- 設定 ----------
 
@@ -335,7 +420,7 @@ class TrayApp(QObject):
         """非模態，已經開著就拉到前面，不會開第二個。"""
         if self._settings is None or not self._settings.isVisible():
             self._settings = SettingsDialog(self.enabled, self.language, self.apply_settings,
-                                            demo=self.demo)
+                                            demo=self.demo, update_available=self.update_available)
             self._settings.show()
         self._settings.raise_()
         self._settings.activateWindow()
@@ -375,7 +460,7 @@ class TrayApp(QObject):
             self._refresh_on_view()
 
     def shutdown(self) -> None:
-        for timer in self._timers + [self._hover_timer, self._resume_timer]:
+        for timer in self._timers + [self._hover_timer, self._resume_timer, self._anim_timer]:
             timer.stop()
         self.poller.shutdown()
         if self._settings is not None:

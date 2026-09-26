@@ -1,6 +1,6 @@
 [project]
 name = "ai-quota-tray"
-version = "0.1.0"
+version = "0.1.1"
 description = "Windows 系統匣常駐工具：顯示各家 AI 訂閱的剩餘額度與重置倒數"
 requires-python = ">=3.11"
 # probe 只用標準函式庫；系統匣（tray）才需要下面這些。Win32 走 ctypes，不需要 pywin32
@@ -10,6 +10,9 @@ dependencies = [
     "winrt-runtime>=3.2; sys_platform == 'win32'",
     "winrt-Windows.ApplicationModel>=3.2; sys_platform == 'win32'",
     "winrt-Windows.Foundation>=3.2; sys_platform == 'win32'",
+    # Store 版檢查有沒有新版（StoreContext，store_update.py）
+    "winrt-Windows.Services.Store>=3.2; sys_platform == 'win32'",
+    "winrt-Windows.Foundation.Collections>=3.2; sys_platform == 'win32'",
 ]
 
 [project.scripts]
