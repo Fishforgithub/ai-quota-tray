@@ -1,5 +1,7 @@
 # Microsoft Store 上架資料（AI Usage Meter）
 
+> 0.1.2.0 的五語清單文案與填寫順序見 [store-listing-0.1.2.md](store-listing-0.1.2.md)。本頁保留首發與 0.1.1.0 的提交紀錄、受限功能說明及審核測試資訊。
+
 > 這份只放「Partner Center 要填什麼、怎麼填」。格式與踩過的坑照 desk-pet 的 `docs/store-listing.md`（已在 Store 上架）。
 > 欄位上限 2026-09-26 查證自 Microsoft Learn〈Add and edit Store listing info for MSIX app〉；搜尋字詞的上限是 desk-pet 的經驗值。
 
@@ -243,7 +245,7 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 >
 > In demo mode the app makes no queries and starts no other tools. No sign-in or account is needed, and there are no in-app purchases.
 >
-> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window switches the interface language between English and Traditional Chinese, and links to the privacy policy and website. The ring around the tray icon slowly rotates; it pauses when the screen is locked or off, in battery saver, or when Windows animation effects are off.
+> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window offers Traditional Chinese, English, Japanese, German, and Simplified Chinese, and links to the privacy policy and website. The ring around the tray icon slowly rotates; it pauses when the screen is locked or off, in battery saver, or when Windows animation effects are off.
 
 **中文對照（給業主核對，不用貼）**
 
@@ -256,7 +258,7 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 >
 > 示範模式下不查詢任何服務、不啟動其他工具。不需要登入或帳號，也沒有內購。
 >
-> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換中英文介面，也有隱私權政策與官網連結。系統匣圖示的外圈會慢慢旋轉，鎖定畫面、螢幕關閉、省電模式或 Windows 關掉動畫效果時會停下。
+> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換繁中、英文、日文、德文、簡中五種介面，也有隱私權政策與官網連結。系統匣圖示的外圈會慢慢旋轉，鎖定畫面、螢幕關閉、省電模式或 Windows 關掉動畫效果時會停下。
 
 ⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字時，這段要一起改。
 

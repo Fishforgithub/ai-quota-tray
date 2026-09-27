@@ -1,10 +1,10 @@
 ---
 title: AI Usage Meter 隱私權政策
 description: AI Usage Meter 的隱私權政策，說明它讀取哪些本機紀錄、會啟動哪些官方工具查詢額度，以及為什麼它不收集個人資料、也沒有自己的伺服器。
-meta: 生效日 2026 年 9 月 26 日 · 適用於 Windows 版 AI Usage Meter
+meta: 生效日 2026 年 9 月 27 日 · 適用於 Windows 版 AI Usage Meter
 changefreq: yearly
 priority: "0.3"
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 :::lead
@@ -53,13 +53,13 @@ AI Usage Meter 是獨立開發的第三方工具，與 Anthropic、OpenAI、GitH
 
 **檢查更新**：從 Microsoft Store 安裝的版本，會在啟動約 30 秒後、之後每 6 小時，透過 Windows 內建的 Microsoft Store 服務詢問「有沒有新版本」。這個查詢只問更新，不送出任何個人資料或額度數字；有新版時只會跳一則通知，要不要更新由你在 Microsoft Store 決定。
 
-這些查詢由各家官方工具直接與其服務連線，適用各服務自己的隱私權政策。本 App 只收到額度數字（已用百分比、重置時間、方案名稱），不會收到、也不會保存你的帳號憑證。
+這些查詢由各家官方工具直接與其服務連線，適用各服務自己的隱私權政策。本 App 只使用額度相關資料（已用百分比、重置時間、方案名稱，以及 Codex 重置券的可用張數與到期時間），不會收到、也不會保存你的帳號憑證。Codex 重置券資訊來自 `codex app-server` 的額度查詢結果，只在本機顯示；若官方工具沒有提供到期時間，App 會標示為未知。
 
 **其他連線**：設定視窗底部有一個標示為「廣告」的橫幅，推廣開發者自己的另一款 App。它是 App 裡唯一的廣告，圖片內建在 App 裡、不從網路載入，也不含任何第三方廣告程式；只有在你點它時，才會用瀏覽器開啟 Microsoft Store 的商品頁。設定視窗底部另有「隱私權政策」「官網」兩個連結，同樣只有在你點了之後，才會用瀏覽器開啟本網站的頁面。
 
 ## 4. 選用：Claude 狀態列擷取
 
-Claude Code 不會自己把額度寫進檔案，所以設定視窗的 Claude 那一列提供「安裝」按鈕。**只有在你按下並確認後**才會：
+Claude Code 不會自己把額度寫進檔案，所以設定視窗的 Claude 那一列提供「安裝擷取」按鈕。**只有在你按下並確認後**才會：
 
 - 在 `%USERPROFILE%\.claude\ai-quota-tray\` 放一支小程式，並把 Claude Code 設定檔（`%USERPROFILE%\.claude\settings.json`）的狀態列指令指向它。修改前會先備份成 `settings.json.ai-quota-tray.bak`；
 - 這支小程式每次收到 Claude Code 提供給狀態列的資料時，**只把其中的額度欄位**寫進 `usage-cache.json`，然後照常顯示你原本的狀態列；

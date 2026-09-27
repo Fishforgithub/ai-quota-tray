@@ -1,10 +1,10 @@
 ---
 title: AI Usage Meter Privacy Policy
 description: The privacy policy for AI Usage Meter, covering which local records it reads, which official tools it starts to look up your usage limits, and why it collects no personal data and has no server of its own.
-meta: Effective 26 September 2026 · Applies to AI Usage Meter for Windows
+meta: Effective 27 September 2026 · Applies to AI Usage Meter for Windows
 changefreq: yearly
 priority: "0.3"
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 :::lead
@@ -56,13 +56,13 @@ In the background, the app only re-reads the local records from section 2 every 
 
 **Update check**: the version installed from the Microsoft Store asks the Microsoft Store service built into Windows whether a new version is available, about 30 seconds after it starts and every 6 hours after that. The check only asks about updates and sends no personal data or usage numbers. If there is a new version you get one notification; whether to update is up to you, in the Microsoft Store.
 
-These lookups are made directly between each official tool and its own service, and are covered by that service's own privacy policy. The app only receives the usage numbers (percentage used, reset time, plan name). It never receives or stores your account credentials.
+These lookups are made directly between each official tool and its own service, and are covered by that service's own privacy policy. The app only uses usage-related data (percentage used, reset time, plan name, and the available count and expiration times of Codex reset credits). It never receives or stores your account credentials. Codex reset-credit details come from the `codex app-server` usage response and are displayed locally. If the official tool does not provide an expiration time, the app marks it as unknown.
 
 **Other connections**: the bottom of the Settings window shows a banner marked "Ad" that promotes another app by the same developer. It is the only ad in the app; its image is built into the app rather than loaded from the internet, and no third-party advertising code is included. Only if you click it does your browser open its Microsoft Store page. The bottom of the Settings window also has "Privacy policy" and "Website" links, which likewise open pages on this website in your browser only when you click them.
 
 ## 4. Optional: Claude status line capture
 
-Claude Code doesn't write its usage limits to a file by itself, so the Claude row in Settings has an "Install" button. **Only after you press it and confirm** will the app:
+Claude Code doesn't write its usage limits to a file by itself, so the Claude row in Settings has an "Install capture" button. **Only after you press it and confirm** will the app:
 
 - place a small script in `%USERPROFILE%\.claude\ai-quota-tray\` and point the status line command in Claude Code's settings file (`%USERPROFILE%\.claude\settings.json`) to it. The settings file is backed up as `settings.json.ai-quota-tray.bak` first;
 - have that script save **only the usage fields** of the data Claude Code gives the status line into `usage-cache.json`, and then show your original status line as usual;

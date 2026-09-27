@@ -45,7 +45,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 狀態值比 §2 多一個 `disabled`（歷史相容狀態）。`ProviderState` 另有 `source` / `error` / `raw`（raw 只給 probe）。
 - 檔案來源規則（`model.apply_file_freshness`）：`resets_at` 已過的視窗 → `used_pct=0`、`resets_at=None`、記進 `detail.rolled_over`；資料 > 15 分鐘或有歸零 → `stale`。
 - **P5（2026-09-25）加 Antigravity CLI、GitHub Copilot**，預設不啟用（細節見 §3）。Copilot 透過官方 Python SDK 的 `account.getQuota`，使用 Copilot CLI 登入；Antigravity 執行官方 `agy -p /usage --output-format json`，由 agy 自己處理登入。額度不是固定長度的視窗 → Copilot 用 `make_window(label=...)`；Antigravity 依 agy 的群組顯示。卡片：Copilot unlimited 顯示「無上限：…」；全部沒勾選時顯示「沒有啟用任何服務…」；Antigravity 未登入提示先用 agy 登入。
-- **介面中／英切換（2026-09-25，業主要求）**：`i18n.py` 集中所有畫面文字（`STRINGS = {key: (繁中, English)}`、`tr(key)`）。設定視窗左下角「語言」下拉：跟隨系統／繁體中文／English，存 `config.json` 的 `language`（`auto`／`zh-TW`／`en`，預設 auto：Windows 介面語言是中文 → 繁中，其他 → English）。在下拉切換會**整個設定視窗立刻換語言預覽**（`tr(key, lang)`，不動全域），按儲存才套用到選單、卡片、通知、tooltip；只換語言不重抓。⚠️ **視窗 label 在資料裡一律維持中文**（週／月／進階／補全…），只在顯示時 `i18n.window_label` 翻——通知去重鍵含 label，切語言不能讓同一週期再通知一次。provider 的錯誤細節（`state.error`）是除錯用、不翻。`i18n` 模組預設繁中、只有 `run()` 依設定切換，所以既有測試不受本機語言影響；改英文的測試要 `addCleanup(i18n.set_language, "zh-TW")`。QMessageBox 的是／否按鈕字自己給（打包版刪了 Qt 翻譯檔）。卡片進度條改成 60–110px 可縮（英文 “Completions” 會把第一欄撐寬，原本固定 110 會讓 % 壓到條上）。
+- **介面中／英切換（2026-09-25，業主要求）**：`i18n.py` 集中所有畫面文字（`STRINGS = {key: (繁中, English)}`、`tr(key)`）。設定視窗左下角「語言」下拉，存 `config.json` 的 `language`（0.1.2 起五種語言、沒有「跟隨系統」，舊的 `auto` 讀取時依系統語言轉換，見下方 0.1.2）。在下拉切換會**整個設定視窗立刻換語言預覽**（`tr(key, lang)`，不動全域），按儲存才套用到選單、卡片、通知、tooltip；只換語言不重抓。⚠️ **視窗 label 在資料裡一律維持中文**（週／月／進階／補全…），只在顯示時 `i18n.window_label` 翻——通知去重鍵含 label，切語言不能讓同一週期再通知一次。provider 的錯誤細節（`state.error`）是除錯用、不翻。`i18n` 模組預設繁中、只有 `run()` 依設定切換，所以既有測試不受本機語言影響；改英文的測試要 `addCleanup(i18n.set_language, "zh-TW")`。QMessageBox 的是／否按鈕字自己給（打包版刪了 Qt 翻譯檔）。卡片進度條改成 60–110px 可縮（英文 “Completions” 會把第一欄撐寬，原本固定 110 會讓 % 壓到條上）。
 
 - **Claude 狀態列擷取安裝器（2026-09-26，`claude_hook.py`）**：Claude 的資料原本只靠業主自己寫的 Node hook（`D:\FISH\tools\claude-monitor\statusline-usage.js`），一般使用者沒有 → Store 版 Claude 會永遠沒資料。設定視窗 Claude 那列加「安裝／移除」按鈕，**按下立刻執行、先跳確認**（改的是 Claude Code 的 `~/.claude/settings.json`，不是我們的設定）。做法：
   - hook 是 PowerShell 腳本 `~/.claude/ai-quota-tray/statusline.ps1`（不用 Node：官方安裝程式裝的 Claude Code 不一定有 Node），把 stdin 的 `rate_limits` 存成 `~/.claude/usage-cache.json`（跟 Node 版同格式），再**照常執行使用者原本的狀態列**、印出它的輸出。原本的 statusLine 存在 `original-statusline.json`（移除時原樣還原，padding／refreshInterval 等欄位保留），指令本身另存 `original.sh`／`original.ps1`：環境有 `MSYSTEM`（Claude Code 經 Git Bash 呼叫）就用 bash 跑 .sh，否則用 PowerShell 跑 .ps1——跟官方文件「有 Git Bash 用 Git Bash，沒有用 PowerShell」一致。
@@ -77,9 +77,16 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - `tests/test_anim_update.py`（畫格只動外圈、停轉條件、Store 檢查、通知只一次且點了開設定、設定新元件）；unittest 156 過。
 - 下一版：**xAI（Grok）** 看回信（見下方 📨）。
 
+### 0.1.2（2026-09-27，Codex 做、Claude 接手收尾）
+
+- **五種介面語言**：繁中、English、日本語、Deutsch、简体中文。翻譯在 `ai_quota_tray/locales/{ja,de,zh_cn}.py`（`i18n.TRANSLATIONS`），`STRINGS` 仍是 (繁中, English) 兩欄。⚠️ **語言下拉拿掉了「跟隨系統」**：舊設定的 `auto` 在讀取時（`config.load_language`／`i18n.resolve`）依 Windows 介面語言轉成五種之一（zh-CN／SG／Hans → 簡中、其他 zh → 繁中、ja、de，其餘 → English）。視窗 label 翻譯改成 `i18n.WINDOW_LABELS[lang]`。
+- **Codex 重置券**：`codex app-server` 回傳的 `rateLimitResetCredits`（`availableCount`、`credits[].expiresAt`／`status`）→ `detail.reset_credits_count`／`reset_credits_next_expiry`（只取 available 且未過期的最早一張），卡片 Codex 區塊多兩行；設定視窗註明「目前僅支援 Codex」。背景讀本機 rollout 沒有這兩個欄位，`TrayApp._on_fetched_local` 會把手上的券資訊帶過去，不讓它消失。
+- Claude 按鈕改成「安裝擷取／移除擷取」並說明不會裝／移除 Claude Code。自家推廣橫幅只有中英文，其他語言顯示英文。隱私權政策補重置券（fish-zero-web `5c817c0`，已 push、線上看得到）。
+- MSIX 宣告五種 `Resource Language`（`pack_msix.py` 的 `PKG_STRINGS` 補 ja／de／zh-CN），`store_shots.py` 五語各 3 張。商店五語文案在 `docs/store-listing-0.1.2.md`。unittest 165 過。⚠️ 0.1.2.0 **沒有跑 WACK**（最後一次是 0.1.1.0）。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
-> ⏸️ **2026-09-26 的狀態**：v0.1.0.0 已上架（Submission 1，不到一小時就過）。0.1.1.0 已送 **Submission 2** 認證（業主 2026-09-26 送出；套件 `AiUsageMeter-0.1.1.0-x64.msix`、WACK PASS 16:02，明細 `docs/store-listing.md` §0.6），程式與文件已 push。下一步：等認證結果（退件就照原因修）；上架後同事可以裝。下一版：xAI（Grok）看回信。
+> ⏸️ **2026-09-27 的狀態**：0.1.1.0（Submission 2）已上架。0.1.2.0 的 **Submission 3** 在 Partner Center 已全部填好：套件 `AiUsageMeter-0.1.2.0-x64.msix` Validated、五語清單都 Complete（各 3 張截圖＋300×300 標誌；英文與繁中的第 3 張換成新版設定畫面）、「其他測試資訊」的認證注意事項改成五語版。只差業主按「提交以進行認證」。💡 Partner Center 清單頁的截圖本身就是「更新圖片」按鈕、旁邊有自己的 file input，替換單張可以原位上傳、不用刪掉重排。下一版：xAI（Grok）看回信。
 
 > 📨 **xAI（Grok）詢問中**：業主 2026-09-26 12:44 寄信給 `sales@x.ai`，問第三方 App 能不能讀 Grok Build CLI 的本機 token、呼叫 `cli-chat-proxy.grok.com/v1/billing` 等端點來顯示使用者自己的用量，或有沒有官方介面可用。業主決定：**回覆 OK 才在下一版加回來**。⚠️ 信裡附的 `blob/main/.../providers/grok.py` 已經 404（P5 `236e126` 刪掉了）；對方要看程式碼時改給固定版本 `https://github.com/Fishforgithub/ai-quota-tray/blob/7376facef447ea03969deed62bfe4aaf9a6a30f2/ai_quota_tray/providers/grok.py`（實測 200）。信裡的產品名是舊的 AI Quota Tray。🔴 **加回來不只是改程式**：隱私權政策、商店說明與功能（「不讀取、不保存登入權杖」）、runFullTrust 說明（「reads no tokens」）、認證注意事項、產品頁都寫死了「不碰 token」，Grok 若仍是讀 token 的做法，這些都要改成「Grok 例外、需使用者自行啟用」並重新送審；若 xAI 給的是官方 API／CLI 指令，就能維持「不碰 token」的說法。
 
