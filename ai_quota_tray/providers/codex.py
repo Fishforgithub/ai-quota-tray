@@ -113,6 +113,18 @@ def parse_app_server(data: dict, now: datetime) -> ProviderState:
               if limits.get(k) is not None}
     if "planType" in detail:
         detail["plan_type"] = detail.pop("planType")
+    reset_credits = data.get("rateLimitResetCredits")
+    if isinstance(reset_credits, dict):
+        count = reset_credits.get("availableCount")
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            detail["reset_credits_count"] = count
+            credits = reset_credits.get("credits")
+            if isinstance(credits, list):
+                expiries = [parse_time(credit.get("expiresAt")) for credit in credits
+                            if isinstance(credit, dict) and credit.get("status") == "available"]
+                expiries = [expiry for expiry in expiries if expiry is not None and expiry > now]
+                if expiries:
+                    detail["reset_credits_next_expiry"] = min(expiries).isoformat()
     return ProviderState(NAME, windows, now, OK, detail, source="codex-app-server", raw=limits)
 
 

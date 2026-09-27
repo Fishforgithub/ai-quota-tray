@@ -1,4 +1,4 @@
-"""介面語言：繁中／English 切換。"""
+"""介面語言：五種語系切換。"""
 import os
 import re
 import tempfile
@@ -32,12 +32,54 @@ class StringTableTest(unittest.TestCase):
         for key, (_, en) in i18n.STRINGS.items():
             self.assertIsNone(re.search(r"[一-鿿]", en), key)
 
+    def test_added_languages_cover_every_string_and_placeholder(self):
+        for lang, strings in i18n.TRANSLATIONS.items():
+            self.assertEqual(set(strings), set(i18n.STRINGS), lang)
+            for key, text in strings.items():
+                self.assertTrue(text.strip(), (lang, key))
+                en = i18n.STRINGS[key][1]
+                self.assertEqual(set(re.findall(r"{(\w+)}", text)),
+                                 set(re.findall(r"{(\w+)}", en)), (lang, key))
+
     def test_resolve_and_system_language(self):
-        self.assertIn(i18n.system_language(), (i18n.ZH, i18n.EN))
+        self.assertIn(i18n.system_language(), i18n.LANGUAGES)
         self.assertEqual(i18n.resolve("en"), "en")
         self.assertEqual(i18n.resolve("zh-TW"), "zh-TW")
+        self.assertEqual(i18n.resolve("ja"), "ja")
+        self.assertEqual(i18n.resolve("de"), "de")
+        self.assertEqual(i18n.resolve("zh-CN"), "zh-CN")
         self.assertEqual(i18n.resolve("auto"), i18n.system_language())
         self.assertEqual(i18n.resolve("bogus"), i18n.system_language())
+
+    def test_system_locale_mapping(self):
+        for tag, expected in (("ja-JP", i18n.JA), ("de-DE", i18n.DE),
+                              ("zh-CN", i18n.ZH_CN), ("zh-Hans", i18n.ZH_CN),
+                              ("zh-TW", i18n.ZH), ("fr-FR", i18n.EN)):
+            self.assertEqual(i18n._locale_language(tag), expected)
+
+    def test_promo_uses_english_for_added_languages(self):
+        for lang in (i18n.JA, i18n.DE, i18n.ZH_CN):
+            self.assertEqual(i18n.tr("settings.promo_title", lang), "Taskbar Buddy")
+            self.assertIn("Available in English and Traditional Chinese.",
+                          i18n.tr("settings.promo_body", lang))
+            self.assertEqual(i18n.tr("settings.promo_cta", lang), "Get it from Microsoft →")
+
+    def test_added_languages_translate_card_and_alert(self):
+        week = make_window(95, NOW + timedelta(days=1), 604800)
+        state = ProviderState("codex", [week], NOW, OK)
+        try:
+            for lang, week_label in ((i18n.JA, "週"), (i18n.DE, "Woche"),
+                                     (i18n.ZH_CN, "周")):
+                i18n.set_language(lang)
+                self.assertEqual(i18n.window_label("週"), week_label)
+                _, title, body = alerts.due_alerts([state], set(), NOW)[0]
+                self.assertIn("Codex", title)
+                self.assertRegex(title, r"5\s?%")
+                self.assertRegex(body, r"5\s?%")
+                self.assertEqual(status_message(ProviderState("codex", [], NOW, DISABLED)),
+                                 i18n.tr("card.disabled"))
+        finally:
+            i18n.set_language(i18n.ZH)
 
     def test_explicit_lang_does_not_touch_global(self):
         self.assertEqual(i18n.tr("settings.save", "en"), "Save")
@@ -81,12 +123,14 @@ class LanguageConfigTest(unittest.TestCase):
     def test_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "config.json"
-            self.assertEqual(config.load_language(path), "auto")  # 沒設定＝跟隨系統
+            self.assertEqual(config.load_language(path), i18n.system_language())
             config.save(path, language="en", enabled={"claude"})
             self.assertEqual(config.load_language(path), "en")
             self.assertEqual(config.load_enabled({"claude", "codex"}, path), {"claude"})
             path.write_text('{"language": "fr"}', encoding="utf-8")
-            self.assertEqual(config.load_language(path), "auto")
+            self.assertEqual(config.load_language(path), i18n.system_language())
+            path.write_text('{"language": "auto"}', encoding="utf-8")
+            self.assertEqual(config.load_language(path), i18n.system_language())
 
 
 class SettingsLanguageTest(unittest.TestCase):
@@ -110,12 +154,13 @@ class SettingsLanguageTest(unittest.TestCase):
     def test_switch_previews_without_touching_global_and_cancel_discards(self):
         dlg, applied = self.make()
         self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · 服務設定（Ver. {display_version()}）")
-        self.assertEqual([dlg.language.itemText(i) for i in range(3)],
-                         ["跟隨系統", "繁體中文", "English"])
+        self.assertEqual([dlg.language.itemText(i) for i in range(dlg.language.count())],
+                         ["繁體中文", "English", "日本語", "Deutsch", "简体中文"])
         dlg.language.setCurrentIndex(i18n.LANGUAGES.index("en"))
         self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · Services (Ver. {display_version()})")
         self.assertTrue({"Service", "Save", "Cancel", "Language"} <= self.texts(dlg))
-        self.assertEqual(dlg.language.itemText(0), "System default")
+        self.assertEqual([dlg.language.itemText(i) for i in range(dlg.language.count())],
+                         ["繁體中文", "English", "日本語", "Deutsch", "简体中文"])
         self.assertEqual(i18n.current(), i18n.ZH)  # 還沒儲存
         dlg.reject()
         self.assertEqual(applied, [])
@@ -133,6 +178,39 @@ class SettingsLanguageTest(unittest.TestCase):
         dlg, _ = self.make("en")
         self.assertEqual(dlg.selected_language(), "en")
         self.assertIn("Choose services to show", self.texts(dlg))
+
+    def test_legacy_auto_opens_as_actual_language(self):
+        dlg, _ = self.make("auto")
+        self.assertEqual(dlg.selected_language(), i18n.system_language())
+        self.assertEqual(dlg.language.count(), 5)
+
+    def test_added_language_preview_and_site_links(self):
+        dlg, _ = self.make()
+        for lang in (i18n.JA, i18n.DE, i18n.ZH_CN):
+            dlg.language.setCurrentIndex(i18n.LANGUAGES.index(lang))
+            self.assertEqual(dlg.selected_language(), lang)
+            self.assertIn("Taskbar Buddy", self.texts(dlg))
+            self.assertIn("/en/aiusagemeter", dlg.links.text())
+
+    def test_capture_button_and_reset_voucher_note_explain_scope(self):
+        from PySide6.QtWidgets import QLabel, QPushButton
+        from ai_quota_tray import claude_hook
+
+        with mock.patch.object(claude_hook, "status", return_value=claude_hook.NOT_INSTALLED):
+            dlg, _ = self.make()
+        button = dlg.findChild(QPushButton, "hookButton")
+        note = dlg.findChild(QLabel, "resetCreditsNote")
+        self.assertEqual(button.text(), "安裝擷取")
+        self.assertIn("不會安裝 Claude Code", dlg.claude_desc.text())
+        self.assertIn("僅支援 Codex", note.text())
+        dlg.language.setCurrentIndex(i18n.LANGUAGES.index("en"))
+        self.assertEqual(button.text(), "Install capture")
+        self.assertIn("Codex only", note.text())
+
+        with mock.patch.object(claude_hook, "status", return_value=claude_hook.INSTALLED):
+            installed, _ = self.make()
+        self.assertEqual(installed.findChild(QPushButton, "hookButton").text(), "移除擷取")
+        self.assertIn("不會移除 Claude Code", installed.claude_desc.text())
 
     def test_promo_is_localized_and_opens_only_store_link_on_click(self):
         from PySide6.QtCore import QUrl

@@ -44,6 +44,9 @@
   <Resources>
     <Resource Language="zh-TW" />
     <Resource Language="en" />
+    <Resource Language="ja" />
+    <Resource Language="de" />
+    <Resource Language="zh-CN" />
   </Resources>
 
   <Applications>

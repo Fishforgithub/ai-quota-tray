@@ -19,7 +19,7 @@ from . import placement
 from .i18n import join, tr, window_label
 from .icon import COLORS, level_for
 from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, PREPARING, STALE, ProviderState,
-                    Window, format_age, format_countdown, utcnow)
+                    Window, format_age, format_countdown, parse_time, utcnow)
 
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
             "antigravity": "Antigravity CLI"}
@@ -230,6 +230,19 @@ class Card(QWidget):
                 update_cd(now)
                 self._tickers.append(update_cd)
                 row += 1
+
+            count = state.detail.get("reset_credits_count") if name == "codex" else None
+            if isinstance(count, int) and count >= 0:
+                grid.addWidget(label(tr("card.reset_credits", count=count), text_c, small=True),
+                               row, 0, 1, 4)
+                row += 1
+                if count:
+                    expiry = parse_time(state.detail.get("reset_credits_next_expiry"))
+                    expiry_text = (tr("card.reset_credits_expiry",
+                                      date=expiry.astimezone().strftime("%Y/%m/%d %H:%M"))
+                                   if expiry else tr("card.reset_credits_expiry_unknown"))
+                    grid.addWidget(label(expiry_text, text_c, small=True), row, 0, 1, 4)
+                    row += 1
 
             unlimited = state.detail.get("unlimited") or []
             if unlimited:

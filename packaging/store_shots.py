@@ -40,6 +40,21 @@ CAPTIONS = {
         ("Pick your tools.\nNo sign-in, no tokens.", "Lookups go through the official tools already signed in on your PC. "
                                                     "AI Usage Meter never reads your passwords or tokens."),
     ],
+    i18n.JA: [
+        ("利用枠をまとめて確認", "残量とリセットまでの時間を、通知領域からすばやく確認。"),
+        ("明るい画面でも暗い画面でも", "Windows の表示モードに合わせて見やすく表示します。"),
+        ("使うツールを選択", "サインイン済みの公式ツールを利用し、パスワードやトークンは読み取りません。"),
+    ],
+    i18n.DE: [
+        ("Alle Limits im Blick", "Restkontingent und Rücksetzzeit direkt im Windows-Infobereich sehen."),
+        ("Hell oder dunkel", "Die Anzeige folgt dem Windows-Farbmodus und kennzeichnet knappe Limits."),
+        ("Deine Tools wählen", "Die Abfrage nutzt angemeldete offizielle Tools – ohne Passwörter oder Token zu lesen."),
+    ],
+    i18n.ZH_CN: [
+        ("各项额度 一眼看清", "悬停系统托盘图标，查看剩余用量和重置倒计时。"),
+        ("浅色、深色都清晰", "跟随 Windows 显示模式，额度不足时颜色也会变化。"),
+        ("选择要查看的工具", "通过已登录的官方工具查询，不读取密码或令牌。"),
+    ],
 }
 
 
@@ -87,7 +102,9 @@ def compose(shot: QImage, title: str, subtitle: str, dark_bg: bool, scale: float
     # 左邊：一句標題＋一行說明
     text_c, sub_c = (QColor("#f1f4fa"), QColor("#aab4c8")) if dark_bg else (QColor("#172033"), QColor("#4a566e"))
     left, width = 140, x - 140 - 110
-    font = QFont("Microsoft JhengHei UI" if i18n.current() == i18n.ZH else "Segoe UI")
+    font_family = {i18n.ZH: "Microsoft JhengHei UI", i18n.JA: "Yu Gothic UI",
+                   i18n.ZH_CN: "Microsoft YaHei UI"}.get(i18n.current(), "Segoe UI")
+    font = QFont(font_family)
     font.setPixelSize(64), font.setBold(True)
     p.setFont(font), p.setPen(text_c)
     title_rect = p.boundingRect(QRectF(left, 0, width, H), Qt.TextWordWrap, title)
@@ -107,7 +124,7 @@ def compose(shot: QImage, title: str, subtitle: str, dark_bg: bool, scale: float
 def main() -> None:
     app = QApplication(sys.argv)  # noqa: F841 — 元件需要 QApplication
     OUT.mkdir(parents=True, exist_ok=True)
-    for lang, tag in ((i18n.ZH, "zh-TW"), (i18n.EN, "en")):
+    for lang, tag in ((lang, lang) for lang in i18n.LANGUAGES):
         i18n.set_language(lang)
         (t1, s1), (t2, s2), (t3, s3) = CAPTIONS[lang]
         shots = [

@@ -6,7 +6,7 @@ import logging
 import os
 from pathlib import Path
 
-from .i18n import AUTO, LANGUAGES
+from .i18n import resolve
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ def load_enabled(known: set[str], path: Path | None = None) -> set[str]:
 
 def load_language(path: Path | None = None) -> str:
     value = (_load(path or config_path()) or {}).get("language")
-    return value if value in LANGUAGES else AUTO
+    return resolve(value)
 
 
 def load_demo(path: Path | None = None) -> bool:

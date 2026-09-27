@@ -101,7 +101,7 @@ class TrayApp(QObject):
 
     def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False):
         super().__init__()
-        self.language = language  # 設定值（auto／zh-TW／en）；實際語言在 i18n
+        self.language = i18n.resolve(language)
         self.demo = demo_mode  # 示範模式（demo.py）：只顯示範例資料，不查詢任何服務、不發通知
         self.update_available = False  # Store 上有新版（store_update.py）
         self._update_notified = False  # 每次啟動最多提示一次（拿不到新版版號，無法「每版一次」）
@@ -252,6 +252,11 @@ class TrayApp(QObject):
         if (current is not None and current.fetched_at is not None and state.fetched_at is not None
                 and state.fetched_at <= current.fetched_at):
             return
+        if state.name == "codex" and current is not None:
+            # 本機 rollout 沒有重置券欄位；較新的用量事件不應抹掉 App Server 已讀到的券資訊。
+            for key in ("reset_credits_count", "reset_credits_next_expiry"):
+                if key in current.detail:
+                    state.detail[key] = current.detail[key]
         self._accept(state)
 
     def _accept(self, state: ProviderState) -> None:

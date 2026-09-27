@@ -54,6 +54,23 @@ PKG_STRINGS = {
                           "right in the system tray. Hover the icon to see it.",
         "TileDescription": "Remaining usage of your AI coding tools.",
     },
+    "ja": {
+        "AppDisplayName": "AI Usage Meter",
+        "AppDescription": "AI コーディングツールの残りの使用量とリセットまでの時間を通知領域に表示します。"
+                          "アイコンにマウスを合わせると確認できます。",
+        "TileDescription": "AI コーディングツールの残りの使用量。",
+    },
+    "de": {
+        "AppDisplayName": "AI Usage Meter",
+        "AppDescription": "Zeigt verbleibende Nutzung und Rücksetzzeit Ihrer KI-Coding-Tools im Infobereich. "
+                          "Bewegen Sie den Mauszeiger über das Symbol, um Details zu sehen.",
+        "TileDescription": "Verbleibende Nutzung Ihrer KI-Coding-Tools.",
+    },
+    "zh-CN": {
+        "AppDisplayName": "AI Usage Meter",
+        "AppDescription": "在系统托盘显示 AI 编程工具的剩余用量和重置倒计时；将鼠标悬停在图标上即可查看。",
+        "TileDescription": "AI 编程工具的剩余用量。",
+    },
 }
 
 

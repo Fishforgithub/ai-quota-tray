@@ -113,7 +113,7 @@ class SettingsHookButtonTest(unittest.TestCase):
         return dlg, applied
 
     def test_button_follows_hook_status(self):
-        cases = {claude_hook.NOT_INSTALLED: "安裝", claude_hook.INSTALLED: "移除"}
+        cases = {claude_hook.NOT_INSTALLED: "安裝擷取", claude_hook.INSTALLED: "移除擷取"}
         for status, text in cases.items():
             dlg, _ = self.make(status)
             self.assertTrue(dlg.hook_button.isVisibleTo(dlg), status)
@@ -134,7 +134,7 @@ class SettingsHookButtonTest(unittest.TestCase):
                 mock.patch.object(claude_hook, "status", return_value=claude_hook.INSTALLED):
             dlg.hook_button.click()
         install.assert_called_once()
-        self.assertEqual(dlg.hook_button.text(), "移除")
+        self.assertEqual(dlg.hook_button.text(), "移除擷取")
 
     def test_failed_install_is_reported(self):
         from PySide6.QtWidgets import QMessageBox

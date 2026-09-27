@@ -198,6 +198,8 @@ class MenuTest(unittest.TestCase):
     def test_background_local_only_replaces_older_numbers(self):
         now = self.app_mod.utcnow()
         live = ProviderState("codex", [make_window(94, WEEK_END, 18000)], now, OK,
+                             {"reset_credits_count": 2,
+                              "reset_credits_next_expiry": "2026-10-01T00:00:00+00:00"},
                              source="codex-app-server")
         self.tray_app._on_fetched(live)
         older = ProviderState("codex", [make_window(0, WEEK_END, 18000)], now - timedelta(minutes=30),
@@ -210,6 +212,8 @@ class MenuTest(unittest.TestCase):
                               OK, source="rollout")
         self.tray_app._on_fetched_local(newer)
         self.assertEqual(self.tray_app.states["codex"].windows[0].used_pct, 96.0)
+        self.assertEqual(newer.detail["reset_credits_count"], 2)
+        self.assertEqual(newer.detail["reset_credits_next_expiry"], "2026-10-01T00:00:00+00:00")
 
     def test_background_local_triggers_low_quota_alert(self):
         # 不打開卡片、不連網，也要能發低額度通知

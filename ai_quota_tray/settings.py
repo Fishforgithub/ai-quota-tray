@@ -51,6 +51,8 @@ def _style(p: dict[str, str]) -> str:
         QCheckBox:disabled {{ color: {p['dim']}; }}
         QLabel#sub, QLabel#head, QLabel#sourceDescription, QLabel#langLabel {{
             color: {p['dim']}; }}
+        QLabel#sourceDescription {{ font-size: 8pt; }}
+        QLabel#resetCreditsNote {{ color: {p['dim']}; font-size: 8pt; }}
         QLabel#heading {{ font-size: 12pt; }}
         QFrame#table {{ background: {p['panel']}; border: 1px solid {p['line']}; border-radius: 8px; }}
         QFrame#line {{ background: {p['line']}; border: none; }}
@@ -104,7 +106,7 @@ class SettingsDialog(QDialog):
         # 2026-09-26 多了底部連結那一行（＋約 30px）。
         self.setFixedSize(590, 683)
         self._initial_enabled = set(enabled)
-        self._initial_language = language if language in i18n.LANGUAGES else i18n.AUTO
+        self._initial_language = i18n.resolve(language)
         self._initial_demo = demo
         self._on_apply = on_apply
         self._hook_status = claude_hook.status()
@@ -134,7 +136,7 @@ class SettingsDialog(QDialog):
         top.addWidget(self._text(QLabel(), "settings.language", "langLabel"))
         self.language = QComboBox()
         self.language.setObjectName("language")
-        # 依最長的選項決定寬度：寫死 108 時英文的「System default」會被切掉
+        # 依選項文字決定寬度。
         self.language.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.language.setMinimumWidth(108)
         for code in i18n.LANGUAGES:
@@ -146,7 +148,9 @@ class SettingsDialog(QDialog):
 
         root.addSpacing(14)
         root.addWidget(self._table())
-        root.addSpacing(28)
+        root.addSpacing(5)
+        root.addWidget(self._text(QLabel(), "settings.reset_credits_note", "resetCreditsNote"))
+        root.addSpacing(5)
         root.addWidget(self._promo())
 
         root.addSpacing(10)
@@ -277,18 +281,18 @@ class SettingsDialog(QDialog):
         return self.language.currentData()
 
     def preview_language(self) -> str:
-        """畫面現在用的語言（auto 解析成實際語言）。"""
-        return i18n.resolve(self.selected_language())
+        """畫面現在用的語言。"""
+        return self.selected_language()
 
     def _retranslate(self, *_args) -> None:
         lang = self.preview_language()
         self.setWindowTitle(tr("settings.title", lang) + tr("settings.version", lang, v=display_version()))
         for widget, key in self._texts:
             widget.setText(tr(key, lang))
-        self.language.setItemText(0, tr("settings.lang.auto", lang))
         link_color = _palette()["accent_hover"]
         self.links.setText(" · ".join(
-            f'<a href="{SITE_LINKS[name][lang]}" style="color:{link_color}; text-decoration:none">'
+            f'<a href="{SITE_LINKS[name].get(lang, SITE_LINKS[name][i18n.EN])}" '
+            f'style="color:{link_color}; text-decoration:none">'
             f'{tr(f"settings.link.{name}", lang)}</a>' for name in ("privacy", "website")))
         self._refresh_hook()
 

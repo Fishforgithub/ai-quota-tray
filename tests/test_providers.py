@@ -147,6 +147,23 @@ class CodexTest(unittest.TestCase):
         self.assertEqual(state.source, "codex-app-server")
         self.assertEqual(state.detail["plan_type"], "plus")
 
+    def test_app_server_banked_resets_count_and_earliest_available_expiry(self):
+        limits = {"primary": {"usedPercent": 20, "windowDurationMins": 10080}}
+        data = {"rateLimits": limits, "rateLimitResetCredits": {
+            "availableCount": 3, "credits": [
+                {"status": "available", "expiresAt": EPOCH_NOW + 7200},
+                {"status": "redeemed", "expiresAt": EPOCH_NOW + 60},
+                {"status": "available", "expiresAt": EPOCH_NOW + 3600}]}}
+        state = codex.parse_app_server(data, NOW)
+        self.assertEqual(state.detail["reset_credits_count"], 3)
+        self.assertEqual(state.detail["reset_credits_next_expiry"],
+                         (NOW + timedelta(hours=1)).isoformat())
+
+        data["rateLimitResetCredits"] = {"availableCount": 2, "credits": None}
+        state = codex.parse_app_server(data, NOW)
+        self.assertEqual(state.detail["reset_credits_count"], 2)
+        self.assertNotIn("reset_credits_next_expiry", state.detail)
+
     def test_app_server_does_not_show_another_bucket_as_codex(self):
         with self.assertRaises(ValueError):
             codex.parse_app_server({"rateLimitsByLimitId": {"other": {

@@ -1,7 +1,7 @@
-"""介面語言：繁體中文／English。
+"""介面語言：繁體中文、English、日本語、Deutsch、简体中文。
 
-設定視窗可選「跟隨系統／繁體中文／English」，存在 config.json 的 language
-（auto / zh-TW / en）。auto：Windows 介面語言是中文 → 繁中，其他 → English。
+設定視窗可選五種語言，存在 config.json 的 language。
+舊設定的 auto 會在讀取時依系統語言轉成其中一種。
 
 所有畫面上的字都經過 tr(key)。視窗 label（週、月、進階…）在資料裡一律維持中文
 （通知去重的鍵含 label，切語言不能讓同一週期再通知一次），只在顯示時用 window_label 翻。
@@ -15,8 +15,12 @@ import ctypes
 import locale
 import sys
 
-ZH, EN, AUTO = "zh-TW", "en", "auto"
-LANGUAGES = (AUTO, ZH, EN)
+from .locales.de import STRINGS as STRINGS_DE
+from .locales.ja import STRINGS_JA
+from .locales.zh_cn import STRINGS as STRINGS_ZH_CN
+
+ZH, EN, JA, DE, ZH_CN, AUTO = "zh-TW", "en", "ja", "de", "zh-CN", "auto"
+LANGUAGES = (ZH, EN, JA, DE, ZH_CN)
 
 _current = ZH
 
@@ -62,6 +66,9 @@ STRINGS: dict[str, tuple[str, str]] = {
     "card.unknown_error": ("未知錯誤", "unknown error"),
     "card.no_data": ("沒有額度資料", "No quota data"),
     "card.unlimited": ("無上限：{items}", "Unlimited: {items}"),
+    "card.reset_credits": ("重置券：{count} 張", "Banked resets: {count}"),
+    "card.reset_credits_expiry": ("最近到期：{date}", "Earliest expiry: {date}"),
+    "card.reset_credits_expiry_unknown": ("最近到期：未提供", "Earliest expiry: unavailable"),
     "card.rolled_over": ("已重置", "Reset"),
     "card.estimated_reset": ("約 {countdown}", "~{countdown}"),
     "list.sep": ("、", ", "),
@@ -79,21 +86,23 @@ STRINGS: dict[str, tuple[str, str]] = {
     # 設定視窗
     "settings.title": ("AI Usage Meter · 服務設定", "AI Usage Meter · Services"),
     "settings.heading": ("選擇要顯示的服務", "Choose services to show"),
-    "settings.subtitle": ("查看時更新雲端額度；Claude 定期讀取本機資料。", "Cloud quotas refresh on view; Claude reads local files."),
+    "settings.subtitle": ("查看時更新雲端額度", "Cloud updates on view"),
     "settings.col.service": ("服務", "Service"),
     "settings.col.description": ("說明", "Description"),
     # Claude 那一列：說明依 claude_hook.status() 的結果換，按鈕立刻安裝／移除
-    "settings.hook.not_installed": ("讀取 Claude Code 狀態列；請先安裝擷取。",
-                                    "Reads Claude Code's status line; install the capture first."),
-    "settings.hook.installed": ("已安裝狀態列擷取，用 Claude Code 時自動更新。",
-                                "Status line capture installed; updates as you use Claude Code."),
+    "settings.hook.not_installed": ("安裝用量擷取後才能顯示 Claude 額度；不會安裝 Claude Code。",
+                                    "Install usage capture to show Claude limits. This does not install Claude Code."),
+    "settings.hook.installed": ("已安裝用量擷取；移除擷取不會移除 Claude Code。",
+                                "Usage capture is installed. Removing it does not remove Claude Code."),
     "settings.hook.legacy": ("已偵測到相容的狀態列擷取。",
                              "A compatible status line capture is already set up."),
     "settings.hook.no_claude": ("沒有偵測到 Claude Code。", "Claude Code was not found on this PC."),
     "settings.hook.unreadable": ("Claude Code 的設定檔無法解析，未做任何變更。",
                                  "Couldn't read Claude Code's settings file; nothing was changed."),
-    "settings.hook.install": ("安裝", "Install"),
-    "settings.hook.remove": ("移除", "Remove"),
+    "settings.hook.install": ("安裝擷取", "Install capture"),
+    "settings.hook.remove": ("移除擷取", "Remove capture"),
+    "settings.reset_credits_note": ("重置券數量與最近到期日目前僅支援 Codex。",
+                                    "Reset vouchers: count/expiry for Codex only."),
     "settings.hook.confirm_install": (
         "要安裝 Claude 狀態列擷取嗎？\n\n"
         "會修改 Claude Code 的設定檔：\n{path}\n\n"
@@ -131,7 +140,6 @@ STRINGS: dict[str, tuple[str, str]] = {
     "settings.source.copilot": ("透過官方 SDK 查詢；請先執行 copilot login 登入。",
                                 "Uses the official SDK; sign in with copilot login first."),
     "settings.language": ("語言", "Language"),
-    "settings.lang.auto": ("跟隨系統", "System default"),
     "settings.cancel": ("取消", "Cancel"),
     "settings.save": ("儲存", "Save"),
     "settings.promo_eyebrow": ("廣告 · FISH-ZERO 自家 App", "Ad · A FISH-ZERO app"),
@@ -142,34 +150,53 @@ STRINGS: dict[str, tuple[str, str]] = {
 
 }
 
-# 資料裡的視窗 label（中文）→ English。沒列到的（5h、3d、Chat、Pro…）兩種語言都一樣
-WINDOW_LABELS_EN = {"日": "Day", "週": "Week", "月": "Month", "進階": "Premium",
-                    "補全": "Completions"}
+# 資料裡的視窗 label 固定繁中；只在顯示時翻譯，不改通知去重用的值。
+WINDOW_LABELS = {
+    EN: {"日": "Day", "週": "Week", "月": "Month", "進階": "Premium",
+         "補全": "Completions"},
+    JA: {"日": "日", "週": "週", "月": "月", "進階": "プレミアム", "補全": "補完"},
+    DE: {"日": "Tag", "週": "Woche", "月": "Monat", "進階": "Premium", "補全": "Vervollst."},
+    ZH_CN: {"日": "日", "週": "周", "月": "月", "進階": "高级", "補全": "补全"},
+}
 
 # 語言選單上的名稱，永遠用各自的語言寫（切錯了也找得回來）
-NATIVE_NAMES = {ZH: "繁體中文", EN: "English"}
+NATIVE_NAMES = {ZH: "繁體中文", EN: "English", JA: "日本語", DE: "Deutsch", ZH_CN: "简体中文"}
+
+TRANSLATIONS = {JA: STRINGS_JA, DE: STRINGS_DE, ZH_CN: STRINGS_ZH_CN}
+
+
+def _locale_language(tag: str | None) -> str:
+    tag = (tag or "").replace("_", "-").lower()
+    if tag.startswith("zh"):
+        return ZH_CN if any(x in tag for x in ("-cn", "-sg", "-hans")) else ZH
+    if tag.startswith("ja"):
+        return JA
+    if tag.startswith("de"):
+        return DE
+    return EN
 
 
 def system_language() -> str:
-    """Windows 介面語言是中文（任何地區）→ 繁中，其他 → English。"""
-    primary = None
+    """依 Windows 介面語言選擇已支援語系；其他語言回退英文。"""
+    langid = None
     if sys.platform == "win32":
         try:
-            primary = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
+            langid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
         except (AttributeError, OSError):
-            primary = None
-    if primary is not None:
-        return ZH if primary == 0x04 else EN  # LANG_CHINESE
-    lang = (locale.getlocale()[0] or "").lower()
-    return ZH if lang.startswith("zh") or lang.startswith("chinese") else EN
+            langid = None
+    if langid is not None:
+        tag = locale.windows_locale.get(langid)
+        if tag:
+            return _locale_language(tag)
+    return _locale_language(locale.getlocale()[0])
 
 
 def resolve(setting: str | None) -> str:
-    return setting if setting in (ZH, EN) else system_language()
+    return setting if setting in LANGUAGES else system_language()
 
 
 def set_language(setting: str | None) -> str:
-    """setting 是 config 的值（auto / zh-TW / en）；回傳實際套用的語言。"""
+    """回傳實際套用的語言；舊版 auto 依系統語言選擇。"""
     global _current
     _current = resolve(setting)
     return _current
@@ -182,12 +209,22 @@ def current() -> str:
 def tr(key: str, lang: str | None = None, **kwargs) -> str:
     """lang 不給＝目前語言。設定視窗預覽別的語言時才會給（還沒按儲存，不能動到全域）。"""
     zh, en = STRINGS[key]
-    text = en if (lang or _current) == EN else zh
+    chosen = resolve(lang) if lang is not None else _current
+    if key.startswith("settings.promo_") and chosen in TRANSLATIONS:
+        text = en  # 自家寵物 App 只支援繁中／英文；廣告不暗示它支援其他語言。
+        if key == "settings.promo_body":
+            text += "\nAvailable in English and Traditional Chinese."
+    elif chosen == ZH:
+        text = zh
+    elif chosen == EN:
+        text = en
+    else:
+        text = TRANSLATIONS[chosen][key]
     return text.format(**kwargs) if kwargs else text
 
 
 def window_label(label: str) -> str:
-    return WINDOW_LABELS_EN.get(label, label) if _current == EN else label
+    return WINDOW_LABELS.get(_current, {}).get(label, label)
 
 
 def join(items) -> str:

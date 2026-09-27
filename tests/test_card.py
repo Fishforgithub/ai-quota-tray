@@ -121,6 +121,22 @@ class CardTest(unittest.TestCase):
         self.assertNotIn("8%", texts)
         card.deleteLater()
 
+    def test_codex_banked_resets_in_hover_card(self):
+        card = Card()
+        win = make_window(20, NOW + timedelta(days=1), 604800)
+        card.set_states([("codex", st("codex", windows=[win], detail={
+            "reset_credits_count": 2,
+            "reset_credits_next_expiry": "2026-09-30T10:00:00+00:00"}))])
+        texts = [lbl.text() for lbl in card.findChildren(QLabel)]
+        self.assertIn("重置券：2 張", texts)
+        self.assertTrue(any(text.startswith("最近到期：2026/09/30 ") for text in texts))
+
+        card.set_states([("codex", st("codex", windows=[win], detail={
+            "reset_credits_count": 1}))])
+        texts = [lbl.text() for lbl in card.findChildren(QLabel)]
+        self.assertIn("最近到期：未提供", texts)
+        card.deleteLater()
+
     def test_growing_while_open_stays_on_screen(self):
         # 卡片開著時資料更新、內容變多，底部不能跑出可用區域（業主截圖：Copilot 被切在工作列下）
         from PySide6.QtGui import QGuiApplication

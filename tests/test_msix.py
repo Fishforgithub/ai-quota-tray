@@ -12,7 +12,7 @@ from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from ai_quota_tray import startup  # noqa: E402
+from ai_quota_tray import i18n, startup  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = (ROOT / "packaging" / "msix" / "AppxManifest.xml").read_text(encoding="utf-8")
@@ -108,6 +108,7 @@ class ManifestTest(unittest.TestCase):
         pack = load_pack_msix()
         declared = re.findall(r'<Resource Language="([^"]+)"', MANIFEST)
         self.assertEqual(declared, list(pack.PKG_STRINGS))  # 第一個＝預設語言
+        self.assertEqual(declared, list(i18n.LANGUAGES))
         keys = set(re.findall(r"ms-resource:(\w+)", MANIFEST))
         for lang, strings in pack.PKG_STRINGS.items():
             self.assertEqual(set(strings), keys, lang)
