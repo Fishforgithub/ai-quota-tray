@@ -94,6 +94,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - Fable 等依模型分開的每週額度：statusLine 沒提供（只有 OAuth usage API 有，要 token → 不做）。官方之後若加 `seven_day_<模型>` 欄位，`parse_windows` 會自動顯示成「週·<模型>」。
 - 卡片倒數欄改靠左（業主回報 ↻ 沒對齊：靠右時 `04:20` 與 `2d01h` 寬度不同）。
 - 版號 0.1.3（pyproject、`__version__`）。`tests/test_advanced.py`；unittest 185 過。venv 版實跑看過卡片。卡片／對話框用 Qt `grab()` 截圖看過（繁中／英／德）。**toast 本身、重置通知在真的重置時跳出來都還沒實機看過**。只改本機邏輯，隱私權政策不用動；商店「此版本新增功能」還沒寫。
+- 打包 `AiUsageMeter-0.1.3.0-x64.msix`（48.6 MB）；✅ **WACK `OVERALL_RESULT=PASS`**（2026-09-28 23:41，24 項 22 PASS，剩「封存檔案」「封鎖的可執行檔」兩個 optional FAIL，同以往）。🔴 第一次跑失敗：業主平常的帳號裝著 Store 版 0.1.1.0，UAC 切到的管理員帳號做 loose registration 會 `0x80073D19`（「另一個使用者已安裝此應用程式的封裝版本」）→ 先在業主帳號 `Remove-AppxPackage`、跑完從 Store 裝回來（設定檔在真正的 `%LOCALAPPDATA%`，不會掉；StartupTask 會掉，要重勾）。`wack.ps1` 已加 `Get-AppxPackage -AllUsers` 檢查，其他帳號有裝就先停下來說明。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 

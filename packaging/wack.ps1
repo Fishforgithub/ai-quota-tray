@@ -73,6 +73,14 @@ try {
             throw "這個帳號（$env:USERNAME）已從 Store 安裝 $($p.PackageFullName)，會與 loose registration 衝突。先解除安裝它再跑。"
         }
     }
+    # 其他帳號（例如業主平常的帳號；UAC 常切到另一個管理員帳號）裝了 Store 版也會衝突：
+    # Add-AppxPackage 報 0x80073D19「另一個使用者已安裝此應用程式的封裝版本」（2026-09-28 踩到）
+    $others = @(Get-AppxPackage -AllUsers -Name $name | Where-Object { $_.InstallLocation -ne $Stage })
+    if ($others) {
+        $who = @($others | ForEach-Object { $_.PackageUserInformation } | Where-Object { $_.InstallState -eq "Installed" } |
+                 ForEach-Object { $_.UserSecurityId.Username }) -join "、"
+        throw "其他帳號（$who）已安裝 $($others[0].PackageFullName)，會與 loose registration 衝突。請在那個帳號執行 Remove-AppxPackage $($others[0].PackageFullName) 再跑，跑完從 Store 裝回來。"
+    }
 
     # ---------- 註冊 → WACK ----------
     Write-Host "▶ loose registration"
