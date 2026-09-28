@@ -95,6 +95,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 卡片倒數欄改靠左（業主回報 ↻ 沒對齊：靠右時 `04:20` 與 `2d01h` 寬度不同）。
 - 版號 0.1.3（pyproject、`__version__`）。`tests/test_advanced.py`；unittest 185 過。venv 版實跑看過卡片。卡片／對話框用 Qt `grab()` 截圖看過（繁中／英／德）。**toast 本身、重置通知在真的重置時跳出來都還沒實機看過**。只改本機邏輯，隱私權政策不用動；商店「此版本新增功能」還沒寫。
 - 打包 `AiUsageMeter-0.1.3.0-x64.msix`（48.6 MB）；✅ **WACK `OVERALL_RESULT=PASS`**（2026-09-28 23:41，24 項 22 PASS，剩「封存檔案」「封鎖的可執行檔」兩個 optional FAIL，同以往）。🔴 第一次跑失敗：業主平常的帳號裝著 Store 版 0.1.1.0，UAC 切到的管理員帳號做 loose registration 會 `0x80073D19`（「另一個使用者已安裝此應用程式的封裝版本」）→ 先在業主帳號 `Remove-AppxPackage`、跑完從 Store 裝回來（設定檔在真正的 `%LOCALAPPDATA%`，不會掉；StartupTask 會掉，要重勾）。`wack.ps1` 已加 `Get-AppxPackage -AllUsers` 檢查，其他帳號有裝就先停下來說明。
+- ⏸️ **Submission 3 改送 0.1.3.0**（2026-09-28，業主決定：週日沒人審，撤下 0.1.2 直接換）：已按「Cancel certification」把 0.1.2.0 撤回成草稿 → 業主拖入 0.1.3.0（Validated，0.1.2.0 儲存時自動移除）→ 五語「此版本的新增功能」改成 `docs/store-listing-0.1.3.md`（含 0.1.2 的項目，Store 使用者從 0.1.1 直接升上來），重新載入逐語核對過。其他欄位沒動。**只差業主按「Submit for certification」**。💡 套件 48.6 MB 超過瀏覽器工具 10 MB 上傳上限，只能業主拖；Partner Center 清單的 `releaseNotes` textarea 用原生 setter＋input 事件設值、按 Save 會存進去。💡 業主那台的 Store 版 0.1.1.0 為了跑 WACK 已移除，要從 Store 裝回來。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
