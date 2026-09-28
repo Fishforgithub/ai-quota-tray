@@ -4,6 +4,10 @@
 - 資料過期（stale）→ 區塊變灰，右上顯示「n 分鐘前」。
 - auth_expired / error / disabled 且沒有視窗 → 一行說明文字。
 - 卡片開著時每秒重算倒數（原則 2：只存 resets_at，倒數本地算）。
+- 用量速度（進階設定，model.pace）：只在「照目前速度會在重置前用完」的那一列才出現
+  （業主 2026-09-28 定：安全的不列）——進度條上畫一條刻度＝平均使用時這時候應剩多少，
+  下面多一行「約 n 後用完」。
+- 倒數欄靠左：↻ 要排成一直線（靠右時 04:20 與 2d01h 寬度不同，↻ 會錯開）。
 不搶焦點：Qt.Tool + WindowDoesNotAcceptFocus + WA_ShowWithoutActivating。
 """
 from __future__ import annotations
@@ -18,8 +22,8 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWi
 from . import placement
 from .i18n import join, tr, window_label
 from .icon import COLORS, level_for
-from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, PREPARING, STALE, ProviderState,
-                    Window, format_age, format_countdown, parse_time, utcnow)
+from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, OK, PREPARING, STALE, Pace,
+                    ProviderState, Window, format_age, format_countdown, pace, parse_time, utcnow)
 
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
             "antigravity": "Antigravity CLI"}
@@ -34,6 +38,7 @@ THEMES = {
 }
 CARD_WIDTH = 300
 BAR_WIDTH, BAR_MIN_WIDTH = 110, 60
+BAR_HEIGHT, TICK_HEIGHT = 6, 10  # 刻度比條高一點，條在中間
 ERROR_TEXT_MAX = 60
 
 
@@ -91,35 +96,50 @@ def status_message(state: ProviderState) -> str:
     return tr("card.no_data")
 
 
+def window_pace(win: Window, state: ProviderState) -> Pace | None:
+    """只估確定是真數字的（ok / stale）；失敗後保留的舊數字不估。以數字量到的時間為準。"""
+    if state.status not in (OK, STALE):
+        return None
+    return pace(win, state.fetched_at or utcnow())
+
+
 def unlimited_text(labels: list[str]) -> str:
     return tr("card.unlimited", items=join(window_label(x) for x in labels))
 
 
 class Bar(QWidget):
-    """剩餘額度條：滿格＝剩 100%。"""
+    """剩餘額度條：滿格＝剩 100%。expected（用量速度）給了就在那個位置畫一條刻度。"""
 
-    def __init__(self, remaining: float | None, color: str, track: str):
+    def __init__(self, remaining: float | None, color: str, track: str,
+                 expected: float | None = None, tick: str | None = None):
         super().__init__()
         # 平常 110 寬；label 比較長（英文的 Completions）時縮，否則右邊的 % 會壓到條上
-        self.setFixedHeight(6)
+        self.setFixedHeight(TICK_HEIGHT if expected is not None else BAR_HEIGHT)
         self.setMinimumWidth(BAR_MIN_WIDTH)
         self.setMaximumWidth(BAR_WIDTH)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._remaining, self._color, self._track = remaining, QColor(color), QColor(track)
+        self.expected = expected
+        self._tick = QColor(tick or color)
 
     def sizeHint(self) -> QSize:
-        return QSize(BAR_WIDTH, 6)
+        return QSize(BAR_WIDTH, self.height())
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        r = QRectF(self.rect())
+        w, h = self.width(), self.height()
+        r = QRectF(0, (h - BAR_HEIGHT) / 2, w, BAR_HEIGHT)
         p.setBrush(self._track)
         p.drawRoundedRect(r, 3, 3)
         if self._remaining:
             p.setBrush(self._color)
-            p.drawRoundedRect(QRectF(0, 0, r.width() * self._remaining / 100, r.height()), 3, 3)
+            p.drawRoundedRect(QRectF(0, r.y(), w * self._remaining / 100, BAR_HEIGHT), 3, 3)
+        if self.expected is not None:
+            x = min(max(w * self.expected / 100, 1), w - 1)
+            p.setBrush(self._tick)
+            p.drawRoundedRect(QRectF(x - 1, 0, 2, h), 1, 1)
 
 
 class Card(QWidget):
@@ -142,8 +162,9 @@ class Card(QWidget):
     # ---------- 內容 ----------
 
     def set_states(self, states: list[tuple[str, ProviderState | None]],
-                   banner: str | None = None) -> None:
-        """banner：卡片最上方的一行提示（示範模式用，標明這些不是真的數字）。"""
+                   banner: str | None = None, show_pace: bool = False) -> None:
+        """banner：卡片最上方的一行提示（示範模式用，標明這些不是真的數字）。
+        show_pace：進階設定的「顯示用量速度」。"""
         now = utcnow()
         self._theme = t = _theme()
         if self._body is not None:
@@ -218,11 +239,16 @@ class Card(QWidget):
                 remaining = win.remaining_pct
                 color = t["dim"] if dim or remaining is None else \
                     "#%02x%02x%02x" % COLORS[level_for(remaining)]
+                speed = window_pace(win, state) if show_pace else None
+                if speed is not None and speed.runs_out_at is None:
+                    speed = None  # 撐得到重置：不畫刻度也不提醒
                 grid.addWidget(label(window_label(win.label), text_c), row, 0)
-                grid.addWidget(Bar(remaining, color, t["track"]), row, 1, Qt.AlignVCenter)
+                grid.addWidget(Bar(remaining, color, t["track"],
+                                   speed.expected_remaining_pct if speed else None, text_c),
+                               row, 1, Qt.AlignVCenter)
                 pct = "—" if remaining is None else f"{int(remaining)}%"
                 grid.addWidget(label(pct, text_c, bold=True, align=right), row, 2)
-                cd = label("", t["dim"], align=right)
+                cd = label("", t["dim"])
                 grid.addWidget(cd, row, 3)
 
                 def update_cd(now, w=win, s=state, lbl=cd):
@@ -230,6 +256,16 @@ class Card(QWidget):
                 update_cd(now)
                 self._tickers.append(update_cd)
                 row += 1
+
+                if speed and speed.runs_out_at and speed.runs_out_at > now:
+                    runs = label("", t["dim"] if dim else t["warn"], small=True)
+                    grid.addWidget(runs, row, 0, 1, 4)
+
+                    def update_runs(now, at=speed.runs_out_at, lbl=runs):
+                        lbl.setText(tr("card.pace_runs_out", countdown=format_countdown(at, now)))
+                    update_runs(now)
+                    self._tickers.append(update_runs)
+                    row += 1
 
             count = state.detail.get("reset_credits_count") if name == "codex" else None
             if isinstance(count, int) and count >= 0:

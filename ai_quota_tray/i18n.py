@@ -83,6 +83,31 @@ STRINGS: dict[str, tuple[str, str]] = {
     "alert.body": ("{name} 的{label}視窗只剩 {pct}%{reset}。",
                    "{name} {label} window has {pct}% left{reset}."),
     "alert.reset": ("，{countdown} 後重置", ", resets in {countdown}"),
+    "alert.reset_title": ("{name} {label}額度已重置", "{name} {label} quota has reset"),
+    "alert.reset_body": ("{name} 的{label}視窗重置了，額度回來了。",
+                         "{name} {label} window has reset. Your quota is back."),
+    # 卡片：用量速度（進階設定，model.pace）
+    "card.pace_runs_out": ("照目前速度，約 {countdown} 後用完", "At this pace, runs out in ~{countdown}"),
+    # 進階設定（settings.AdvancedDialog）
+    "settings.advanced": ("進階設定…", "Advanced…"),
+    "advanced.title": ("AI Usage Meter · 進階設定", "AI Usage Meter · Advanced"),
+    "advanced.threshold": ("低額度通知", "Low quota alert"),
+    "advanced.threshold_off": ("不通知", "Off"),
+    "advanced.threshold_pct": ("剩 {pct}% 以下", "Below {pct}% left"),
+    "advanced.threshold_note": ("剩餘額度低於這個值時發通知，每個視窗每個重置週期只通知一次。",
+                                "Notifies when a window drops below this, once per reset cycle."),
+    "advanced.reset_alert": ("額度重置時通知", "Notify when quota resets"),
+    "advanced.reset_alert_note": ("只限發過低額度通知的視窗，不會每次重置都跳。",
+                                  "Only for windows that triggered a low quota alert."),
+    "advanced.pace": ("顯示用量速度", "Show usage pace"),
+    "advanced.pace_note": ("照目前速度會在重置前用完時才提醒，並在進度條上標出平均使用時這時候應剩的位置。",
+                           "Warns only when your current pace would run out before the reset, "
+                           "and marks where an even pace would be on the bar."),
+    "advanced.spend_limit": ("顯示 Claude 花費上限", "Show Claude spend limit"),
+    "advanced.spend_limit_note": ("公司透過 Claude apps gateway 設定花費上限時才會出現。",
+                                  "Only appears when your organization sets a spend limit through "
+                                  "a Claude apps gateway."),
+    "advanced.ok": ("確定", "OK"),
     # 設定視窗
     "settings.title": ("AI Usage Meter · 服務設定", "AI Usage Meter · Services"),
     "settings.heading": ("選擇要顯示的服務", "Choose services to show"),
@@ -153,10 +178,12 @@ STRINGS: dict[str, tuple[str, str]] = {
 # 資料裡的視窗 label 固定繁中；只在顯示時翻譯，不改通知去重用的值。
 WINDOW_LABELS = {
     EN: {"日": "Day", "週": "Week", "月": "Month", "進階": "Premium",
-         "補全": "Completions"},
-    JA: {"日": "日", "週": "週", "月": "月", "進階": "プレミアム", "補全": "補完"},
-    DE: {"日": "Tag", "週": "Woche", "月": "Monat", "進階": "Premium", "補全": "Vervollst."},
-    ZH_CN: {"日": "日", "週": "周", "月": "月", "進階": "高级", "補全": "补全"},
+         "補全": "Completions", "花費上限": "Spend limit"},
+    JA: {"日": "日", "週": "週", "月": "月", "進階": "プレミアム", "補全": "補完",
+         "花費上限": "利用額上限"},
+    DE: {"日": "Tag", "週": "Woche", "月": "Monat", "進階": "Premium", "補全": "Vervollst.",
+         "花費上限": "Ausgabenlimit"},
+    ZH_CN: {"日": "日", "週": "周", "月": "月", "進階": "高级", "補全": "补全", "花費上限": "花费上限"},
 }
 
 # 語言選單上的名稱，永遠用各自的語言寫（切錯了也找得回來）

@@ -6,9 +6,12 @@
 - 系統匣一律顯示品牌圖示（業主決定），數字只在卡片；卡片開著時自己每秒重算倒數（card.py）。
 - 睡眠喚醒後等 RESUME_DELAY_S 秒重讀 Claude 本機快取。
 
-P4：抓取失敗時保留上一次的數字（model.carry_over）；剩餘 < 10% 跳通知（alerts.py，
-每個重置週期只一次）；右鍵選單：立即刷新／設定…（啟用服務，settings.py）／
+P4：抓取失敗時保留上一次的數字（model.carry_over）；剩餘低於門檻跳通知（alerts.py，
+每個重置週期只一次；門檻預設 10%）；右鍵選單：立即刷新／設定…（啟用服務，settings.py）／
 開機時啟動（startup.py）／關閉。
+
+進階設定（config.Advanced）：通知門檻、跳過通知的視窗重置時再通知（每分鐘看一次，
+_check_resets）、卡片的用量速度、Claude 花費上限要不要顯示（關掉時卡片、tooltip、通知都不看它）。
 
 卡片開關：NIN_POPUPOPEN（hover）或點一下圖示 → 開；之後每 HOVER_CHECK_MS 看一次滑鼠，
 離開「圖示＋卡片」超過 HIDE_DELAY_S 才關。不直接靠 NIN_POPUPCLOSE 關，
@@ -27,6 +30,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
@@ -36,8 +40,10 @@ from . import config, demo, i18n, icon, icon_anim, startup, store_update, win32t
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
+from .config import Advanced
 from .model import OK, PREPARING, STALE, ProviderState, carry_over, utcnow
 from .providers import ALL, fetch_local_one, fetch_one
+from .providers import claude as claude_provider
 from .providers import copilot as copilot_provider
 from .settings import SettingsDialog
 
@@ -99,9 +105,11 @@ class TrayApp(QObject):
     copilot_ready = Signal()  # Copilot runtime 下載完成（背景執行緒 emit，排進主執行緒）
     update_checked = Signal(object)  # store_update.check() 的結果（背景執行緒 emit）
 
-    def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False):
+    def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False,
+                 advanced: Advanced | None = None):
         super().__init__()
         self.language = i18n.resolve(language)
+        self.advanced = advanced or Advanced()
         self.demo = demo_mode  # 示範模式（demo.py）：只顯示範例資料，不查詢任何服務、不發通知
         self.update_available = False  # Store 上有新版（store_update.py）
         self._update_notified = False  # 每次啟動最多提示一次（拿不到新版版號，無法「每版一次」）
@@ -127,6 +135,7 @@ class TrayApp(QObject):
         freshness_timer = QTimer(self)
         freshness_timer.setInterval(60_000)
         freshness_timer.timeout.connect(self._mark_remote_stale)
+        freshness_timer.timeout.connect(self._check_resets)
         freshness_timer.start()
         self._timers.append(freshness_timer)
 
@@ -268,20 +277,33 @@ class TrayApp(QObject):
         if self.demo:
             return  # 切到示範模式前送出的查詢晚到：留著給關掉示範模式時用，不顯示、不通知
         self._update_views()
-        due = self.alerts.take_due([state], now)
+        due = self.alerts.take_due([self._shown(state)], now, self.advanced.alert_threshold)
         if due:
             # 一次只能掛一則，同一家兩個視窗都低時合併
             self._notify("alert", due[0][0], "\n".join(body for _, body in due))
 
+    def _check_resets(self) -> None:
+        """跳過低額度通知的視窗重置了 → 說一聲額度回來了。重置通知關著也要拿，免得越積越多。"""
+        due = self.alerts.take_resets(utcnow(), set(self.enabled))
+        if due and not self.demo and self.advanced.reset_alert and self.advanced.alert_threshold > 0:
+            self._notify("reset", due[0][0], "\n".join(body for _, body in due))
+
+    def _shown(self, state: ProviderState | None) -> ProviderState | None:
+        """進階設定關掉「Claude 花費上限」時把那一列拿掉（資料本身照存，打開就回來）。"""
+        if state is None or state.name != "claude" or self.advanced.spend_limit:
+            return state
+        windows = [w for w in state.windows if w.label != claude_provider.SPEND_LIMIT_LABEL]
+        return state if len(windows) == len(state.windows) else replace(state, windows=windows)
+
     def _update_views(self) -> None:
         self.tray.set_tooltip(icon.tooltip([s for _, s in self._card_states() if s is not None]))
         if self.card.isVisible():
-            self.card.set_states(self._card_states(), self._banner())
+            self.card.set_states(self._card_states(), self._banner(), self.advanced.pace)
 
     def _card_states(self) -> list[tuple[str, ProviderState | None]]:
         if self.demo:
             return demo.sample_states(utcnow())  # 四家全顯示，不管勾了哪幾家
-        return [(name, self.states.get(name)) for name in ALL if name in self.enabled]
+        return [(name, self._shown(self.states.get(name))) for name in ALL if name in self.enabled]
 
     def _banner(self) -> str | None:
         return tr("card.demo_banner") if self.demo else None
@@ -293,7 +315,7 @@ class TrayApp(QObject):
         self._refresh_on_view()
         # 取不到圖示位置（例如收在關著的溢位區）就用事件給的錨點
         self._card_anchor = self.tray.icon_rect() or (x, y, x + 1, y + 1)
-        self.card.set_states(self._card_states(), self._banner())
+        self.card.set_states(self._card_states(), self._banner(), self.advanced.pace)
         self.card.show_at(self._card_anchor)
         self._outside_since = None
         if hold:
@@ -426,13 +448,14 @@ class TrayApp(QObject):
         """非模態，已經開著就拉到前面，不會開第二個。"""
         if self._settings is None or not self._settings.isVisible():
             self._settings = SettingsDialog(self.enabled, self.language, self.apply_settings,
-                                            demo=self.demo, update_available=self.update_available)
+                                            demo=self.demo, update_available=self.update_available,
+                                            advanced=self.advanced)
             self._settings.show()
         self._settings.raise_()
         self._settings.activateWindow()
 
     def apply_settings(self, enabled: set[str], language: str | None = None,
-                       demo_mode: bool | None = None) -> None:
+                       demo_mode: bool | None = None, advanced: Advanced | None = None) -> None:
         """新勾選的服務立即抓取；取消的從卡片移除；語言變更只重畫。
         關掉示範模式時，照常讀一次本機紀錄（卡片開著的話也查雲端）。"""
         enabled = enabled & ALL.keys()
@@ -448,7 +471,11 @@ class TrayApp(QObject):
         if language is not None:
             self.language = language
             log.info("介面語言：%s → %s", language, i18n.set_language(language))
-        config.save(enabled=self.enabled, language=self.language, demo=self.demo)
+        if advanced is not None:
+            self.advanced = advanced
+            log.info("進階設定：%s", advanced)
+        config.save(enabled=self.enabled, language=self.language, demo=self.demo,
+                    advanced=self.advanced)
         log.info("Enabled: %s%s", sorted(self.enabled), "（示範模式）" if self.demo else "")
         self._update_views()
         if self.demo:
@@ -488,6 +515,7 @@ def run() -> int:
     language = config.load_language()
     i18n.set_language(language)
     demo_mode = config.load_demo()
+    advanced = config.load_advanced()
 
     if not startup.is_packaged():
         # 工作列用我們的圖示，不歸到 pythonw.exe。MSIX 版的 ID 由套件決定，自己設反而會對不上
@@ -495,7 +523,7 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 沒有任何 Qt 視窗也要常駐
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))
-    tray_app = TrayApp(enabled, language, demo_mode)
+    tray_app = TrayApp(enabled, language, demo_mode, advanced)
     app.aboutToQuit.connect(tray_app.shutdown)
     if not config.load_welcomed():
         tray_app.show_welcome()

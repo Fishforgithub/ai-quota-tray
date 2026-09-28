@@ -1,5 +1,8 @@
 """設定視窗：服務啟用勾選、語言、示範模式，以及 Claude 狀態列擷取的安裝／移除。
 
+「進階設定…」另開一個小視窗（AdvancedDialog：通知門檻、重置通知、用量速度、Claude 花費上限），
+按確定只是先記在設定視窗裡，跟其他欄位一樣按「儲存」才套用。
+
 Claude 那一列右邊的按鈕會「立刻」安裝或移除 hook（claude_hook.py），不等按儲存：
 它改的是 Claude Code 的設定檔，不是我們的，按下去時先跳確認視窗說清楚會改什麼。
 """
@@ -13,6 +16,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayou
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
 from . import claude_hook, display_version, i18n, store_update
+from .config import ALERT_THRESHOLDS, Advanced
 from .i18n import tr
 from .icon import ASSETS, BRAND_PNG
 from .model import DISPLAY_NAME
@@ -85,6 +89,8 @@ def _style(p: dict[str, str]) -> str:
                                    font-weight: bold; min-width: 0; padding: 0 16px; }}
         QPushButton#updateButton:hover {{ background: {p['accent_hover']}; }}
         QLabel#links, QLabel#disclaimer {{ color: {p['dim']}; font-size: 8pt; }}
+        QLabel#advancedNote {{ color: {p['dim']}; font-size: 8pt; }}
+        QPushButton#advancedButton {{ min-width: 0; padding: 0 12px; }}
     """
 
 
@@ -95,10 +101,78 @@ def _line() -> QFrame:
     return line
 
 
+class AdvancedDialog(QDialog):
+    """進階設定。lang＝設定視窗正在預覽的語言（還沒按儲存，不能動全域）。"""
+
+    def __init__(self, advanced: Advanced, lang: str, parent: QWidget | None = None):
+        super().__init__(parent, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
+        self.setWindowIcon(QIcon(str(BRAND_PNG)))
+        self.setStyleSheet(_style(_palette()))
+        self.setWindowTitle(tr("advanced.title", lang))
+        self.setFixedWidth(460)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 18)
+        root.setSpacing(4)
+
+        def note(key: str) -> QLabel:
+            lbl = QLabel(tr(key, lang))
+            lbl.setObjectName("advancedNote")
+            lbl.setWordWrap(True)
+            return lbl
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel(tr("advanced.threshold", lang)))
+        row.addStretch(1)
+        self.threshold = QComboBox()
+        self.threshold.setObjectName("threshold")
+        self.threshold.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        for pct in ALERT_THRESHOLDS:
+            self.threshold.addItem(tr("advanced.threshold_pct", lang, pct=pct) if pct
+                                   else tr("advanced.threshold_off", lang), pct)
+        self.threshold.setCurrentIndex(ALERT_THRESHOLDS.index(advanced.alert_threshold))
+        row.addWidget(self.threshold)
+        root.addLayout(row)
+        root.addWidget(note("advanced.threshold_note"))
+
+        self.checks: dict[str, QCheckBox] = {}
+        for name in ("reset_alert", "pace", "spend_limit"):
+            root.addSpacing(12)
+            check = QCheckBox(tr(f"advanced.{name}", lang))
+            check.setObjectName(name)
+            check.setChecked(getattr(advanced, name))
+            self.checks[name] = check
+            root.addWidget(check)
+            root.addWidget(note(f"advanced.{name}_note"))
+        # 不發低額度通知就不會有「發過通知的視窗」，重置通知跟著沒作用
+        self.threshold.currentIndexChanged.connect(self._sync)
+        self._sync()
+
+        root.addSpacing(18)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton(tr("settings.cancel", lang))
+        cancel.setObjectName("cancel")
+        cancel.clicked.connect(self.reject)
+        ok = QPushButton(tr("advanced.ok", lang))
+        ok.setObjectName("save")
+        ok.setDefault(True)
+        ok.clicked.connect(self.accept)
+        buttons.addWidget(cancel)
+        buttons.addWidget(ok)
+        root.addLayout(buttons)
+
+    def _sync(self, *_args) -> None:
+        self.checks["reset_alert"].setEnabled(self.threshold.currentData() > 0)
+
+    def value(self) -> Advanced:
+        return Advanced(self.threshold.currentData(), *(self.checks[n].isChecked()
+                                                         for n in ("reset_alert", "pace", "spend_limit")))
+
+
 class SettingsDialog(QDialog):
     def __init__(self, enabled: set[str], language: str,
-                 on_apply: Callable[[set[str], str, bool], None], demo: bool = False,
-                 update_available: bool = False):
+                 on_apply: Callable[[set[str], str, bool, Advanced], None], demo: bool = False,
+                 update_available: bool = False, advanced: Advanced | None = None):
         super().__init__(None, Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.setWindowIcon(QIcon(str(BRAND_PNG)))
         self.setStyleSheet(_style(_palette()))
@@ -108,6 +182,7 @@ class SettingsDialog(QDialog):
         self._initial_enabled = set(enabled)
         self._initial_language = i18n.resolve(language)
         self._initial_demo = demo
+        self._initial_advanced = self.advanced = advanced or Advanced()
         self._on_apply = on_apply
         self._hook_status = claude_hook.status()
         self.checks: dict[str, QCheckBox] = {}
@@ -172,6 +247,9 @@ class SettingsDialog(QDialog):
         self.demo_check = self._text(QCheckBox(), "settings.demo", "demoCheck")
         self.demo_check.setChecked(demo)
         buttons.addWidget(self.demo_check)
+        self.advanced_button = self._text(QPushButton(), "settings.advanced", "advancedButton")
+        self.advanced_button.clicked.connect(self.open_advanced)
+        buttons.addWidget(self.advanced_button)
         buttons.addStretch(1)
         cancel = self._text(QPushButton(), "settings.cancel", "cancel")
         cancel.setFixedWidth(147)
@@ -336,6 +414,13 @@ class SettingsDialog(QDialog):
         self._hook_status = claude_hook.status()
         self._refresh_hook()
 
+    # ---------- 進階設定 ----------
+
+    def open_advanced(self) -> None:
+        dlg = AdvancedDialog(self.advanced, self.preview_language(), self)
+        if dlg.exec() == QDialog.Accepted:
+            self.advanced = dlg.value()
+
     # ---------- 服務與儲存 ----------
 
     def select(self, enabled: set[str]) -> None:
@@ -349,6 +434,6 @@ class SettingsDialog(QDialog):
         enabled, language = self.selected_enabled(), self.selected_language()
         demo = self.demo_check.isChecked()
         if (enabled != self._initial_enabled or language != self._initial_language
-                or demo != self._initial_demo):
-            self._on_apply(enabled, language, demo)
+                or demo != self._initial_demo or self.advanced != self._initial_advanced):
+            self._on_apply(enabled, language, demo, self.advanced)
         super().accept()

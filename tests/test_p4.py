@@ -359,7 +359,7 @@ class SettingsDialogTest(unittest.TestCase):
         self.assertTrue(any("官方 agy CLI" in text for text in descriptions))
         dlg.checks["copilot"].setChecked(True)
         dlg.accept()
-        self.assertEqual(applied, [({"claude", "codex", "copilot"}, "zh-TW", False)])
+        self.assertEqual(applied, [({"claude", "codex", "copilot"}, "zh-TW", False, config.Advanced())])
 
     def test_no_change_no_apply_and_cancel(self):
         dlg, applied = self.make()

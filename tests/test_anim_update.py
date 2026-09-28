@@ -10,6 +10,7 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from ai_quota_tray import __version__, display_version, i18n, icon_anim, store_update  # noqa: E402
+from ai_quota_tray.config import Advanced  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # 單獨跑這個檔也找得到 test_launch
 from test_launch import TrayAppTestBase  # noqa: E402
 
@@ -182,7 +183,7 @@ class SettingsAdditionsTest(unittest.TestCase):
                          {"claude_enabled", "codex_enabled", "antigravity_enabled", "copilot_enabled", "demoCheck"})
         dlg.demo_check.setChecked(True)
         dlg.accept()
-        self.assertEqual(applied, [({"claude"}, "zh-TW", True)])
+        self.assertEqual(applied, [({"claude"}, "zh-TW", True, Advanced())])
 
 if __name__ == "__main__":
     unittest.main()

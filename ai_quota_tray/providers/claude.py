@@ -19,6 +19,10 @@ NAME = "claude"
 
 # rate_limits 的 key 前綴 → 視窗長度；後綴（例如 seven_day_opus 的 opus）接在 label 後面
 _PREFIX_DURATION = {"five_hour": 5 * 3600, "seven_day": 7 * 86400}
+# Claude apps gateway 設的花費上限（官方 statusLine 文件，Claude Code v2.1.251+）。
+# 週期長度沒給，所以不推 label；used_percentage 超過上限時會 > 100（make_window 夾到 100）
+SPEND_LIMIT_KEY = "spend_limit"
+SPEND_LIMIT_LABEL = "花費上限"
 
 
 def cache_path() -> Path:
@@ -36,6 +40,10 @@ def parse_windows(limits: dict, pct_field: str) -> tuple[list[Window], dict]:
     for key, value in limits.items():
         prefix = next((p for p in _PREFIX_DURATION if key == p or key.startswith(p + "_")), None)
         if value is None:
+            continue
+        if key == SPEND_LIMIT_KEY and isinstance(value, dict):
+            windows.append(make_window(value.get(pct_field), value.get("resets_at"), None,
+                                       label=SPEND_LIMIT_LABEL))
             continue
         if prefix is None or not isinstance(value, dict):
             unknown[key] = value

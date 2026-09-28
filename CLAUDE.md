@@ -84,6 +84,17 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - Claude 按鈕改成「安裝擷取／移除擷取」並說明不會裝／移除 Claude Code。自家推廣橫幅只有中英文，其他語言顯示英文。隱私權政策補重置券（fish-zero-web `5c817c0`，已 push、線上看得到）。
 - MSIX 宣告五種 `Resource Language`（`pack_msix.py` 的 `PKG_STRINGS` 補 ja／de／zh-CN），`store_shots.py` 五語各 3 張。商店五語文案在 `docs/store-listing-0.1.2.md`。unittest 165 過。⚠️ 0.1.2.0 **沒有跑 WACK**（最後一次是 0.1.1.0）。
 
+### 0.1.3（2026-09-28）：進階設定
+
+- 設定視窗底部「進階設定…」→ `settings.AdvancedDialog`（模態子視窗）。按確定只記在設定視窗，**按主視窗「儲存」才套用**；`on_apply` 因此多一個參數：`(enabled, language, demo, advanced)`。存 `config.json` 的 `advanced`（`config.Advanced`，frozen dataclass；欄位壞掉只有那一欄回預設）。
+- **低額度通知門檻**：`config.ALERT_THRESHOLDS`＝不通知／10／20／30，預設 10。只改通知，**卡片進度條的紅黃綠門檻不變**（`icon.level_for`）。
+- **重置通知**（預設開）：只針對**發過低額度通知**的視窗（state.json 裡有鍵的），否則 5h 視窗一天會跳好幾次。鍵過期（`resets_at` 已過）的那一刻＝重置：`AlertStore._prune` 把清掉的鍵記進 `_just_reset`，`TrayApp._check_resets` 每分鐘（掛在 freshness_timer）用 `take_resets` 拿走。⚠️ 抓取時的 `take_due` 也會 prune，所以清掉的鍵要先暫存、不能直接丟。重置已過 1 小時以上（`RESET_NOTIFY_WITHIN`，睡眠／沒開程式）不說；沒啟用的服務、示範模式不說；門檻設「不通知」時沒有鍵，設定裡的勾選會變灰。
+- **用量速度**（**預設不勾**，業主 2026-09-28 定；`model.pace`）：**只在「照視窗開始到數字量到的時間的平均速度，會在重置前用完」的那一列才出現**（安全的不列，業主定）——進度條上畫刻度＝平均使用時這時候應剩多少（時間剩餘比例），下面多一行「照目前速度，約 n 後用完」。「會用完」與「綠條短於刻度」數學上等價。業主第一次看到刻度時看不懂它是什麼，才改成只在要注意時出現。視窗長度不明（Copilot、花費上限）、還沒過 10%（`PACE_MIN_ELAPSED`）、失敗後保留的舊數字都不估。
+- **Claude 花費上限**（預設顯示）：官方 statusLine 的 `rate_limits.spend_limit`（Claude apps gateway，Claude Code v2.1.251+），原本被 `parse_windows` 當 unknown 丟掉。label 固定 `花費上限`（`claude.SPEND_LIMIT_LABEL`，顯示時翻），`used_percentage` 可以 > 100（`make_window` 夾到 100）。關掉時 `TrayApp._shown` 從卡片、tooltip、通知拿掉，資料照存。⚠️ 業主這台沒有 gateway，**只有單元測試，沒看過真資料**。
+- Fable 等依模型分開的每週額度：statusLine 沒提供（只有 OAuth usage API 有，要 token → 不做）。官方之後若加 `seven_day_<模型>` 欄位，`parse_windows` 會自動顯示成「週·<模型>」。
+- 卡片倒數欄改靠左（業主回報 ↻ 沒對齊：靠右時 `04:20` 與 `2d01h` 寬度不同）。
+- 版號 0.1.3（pyproject、`__version__`）。`tests/test_advanced.py`；unittest 185 過。venv 版實跑看過卡片。卡片／對話框用 Qt `grab()` 截圖看過（繁中／英／德）。**toast 本身、重置通知在真的重置時跳出來都還沒實機看過**。只改本機邏輯，隱私權政策不用動；商店「此版本新增功能」還沒寫。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 > ⏸️ **2026-09-27 的狀態**：0.1.1.0（Submission 2）已上架。0.1.2.0 的 **Submission 3** 在 Partner Center 已全部填好：套件 `AiUsageMeter-0.1.2.0-x64.msix` Validated、五語清單都 Complete（各 3 張截圖＋300×300 標誌；英文與繁中的第 3 張換成新版設定畫面）、「其他測試資訊」的認證注意事項改成五語版。只差業主按「提交以進行認證」。💡 Partner Center 清單頁的截圖本身就是「更新圖片」按鈕、旁邊有自己的 file input，替換單張可以原位上傳、不用刪掉重排。下一版：xAI（Grok）看回信。

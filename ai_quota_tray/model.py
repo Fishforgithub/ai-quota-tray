@@ -154,6 +154,34 @@ def make_window(used_pct: Any, resets_at: Any, duration_s: int | None,
     )
 
 
+# 視窗過了這個比例才估速度：太早的平均值會把一開始的一波用量放大成「馬上用完」
+PACE_MIN_ELAPSED = 0.1
+
+
+@dataclass
+class Pace:
+    """照「視窗開始到現在的平均速度」估計（進階設定的「用量速度」）。"""
+    expected_remaining_pct: float  # 平均分配的話，這時候應該還剩多少（卡片進度條上的刻度）
+    runs_out_at: datetime | None  # 照目前速度會在重置前用完 → 用完的時間；來得及撐到重置就是 None
+
+
+def pace(win: Window, at: datetime) -> Pace | None:
+    """at＝這個數字量到的時間（state.fetched_at）。視窗長度或重置時間不明就不估。"""
+    if win.used_pct is None or win.resets_at is None or not win.duration_s:
+        return None
+    left = (win.resets_at - at).total_seconds()
+    elapsed = win.duration_s - left
+    if left <= 0 or elapsed < win.duration_s * PACE_MIN_ELAPSED:
+        return None
+    expected = max(0.0, min(100.0, left / win.duration_s * 100))
+    runs_out_at = None
+    if 0 < win.used_pct < 100:
+        need = (100 - win.used_pct) / (win.used_pct / elapsed)  # 剩下的量照目前速度要幾秒用完
+        if need < left:
+            runs_out_at = at + timedelta(seconds=need)
+    return Pace(expected, runs_out_at)
+
+
 def apply_file_freshness(state: ProviderState, now: datetime) -> ProviderState:
     """檔案來源專用：已過重置時間的視窗歸零、資料太舊標 stale。
 

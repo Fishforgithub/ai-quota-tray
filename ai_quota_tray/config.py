@@ -1,9 +1,10 @@
-"""Persist enabled services and UI language in the local config file."""
+"""Persist enabled services, UI language and advanced options in the local config file."""
 from __future__ import annotations
 
 import json
 import logging
 import os
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from .i18n import resolve
@@ -63,13 +64,48 @@ def load_welcomed(path: Path | None = None) -> bool:
     return (_load(path or config_path()) or {}).get("welcomed") is True
 
 
-def save(path: Path | None = None, **fields: set[str] | str | bool) -> None:
+# 低額度通知門檻可選的值（剩餘 % 低於它就通知）；0＝不通知
+ALERT_THRESHOLDS = (0, 10, 20, 30)
+
+
+@dataclass(frozen=True)
+class Advanced:
+    """設定視窗的「進階設定」。預設值＝加這些選項之前的行為，再加上新功能。"""
+    alert_threshold: int = 10  # 與卡片進度條變紅同一條線（icon.RED_BELOW）
+    reset_alert: bool = True  # 跳過低額度通知的視窗重置時再通知一次
+    pace: bool = False  # 卡片顯示用量速度（model.pace）；業主 2026-09-28 定預設不勾
+    spend_limit: bool = True  # 顯示 Claude apps gateway 的花費上限
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def load_advanced(path: Path | None = None) -> Advanced:
+    """欄位缺、型別不對、門檻不在選項裡 → 那一欄用預設，其他欄照讀。"""
+    value = (_load(path or config_path()) or {}).get("advanced")
+    value = value if isinstance(value, dict) else {}
+    default = Advanced()
+    threshold = value.get("alert_threshold")
+    if isinstance(threshold, bool) or threshold not in ALERT_THRESHOLDS:
+        threshold = default.alert_threshold
+
+    def flag(name: str) -> bool:
+        v = value.get(name)
+        return v if isinstance(v, bool) else getattr(default, name)
+
+    return Advanced(threshold, flag("reset_alert"), flag("pace"), flag("spend_limit"))
+
+
+def save(path: Path | None = None, **fields: set[str] | str | bool | Advanced) -> None:
     """更新指定欄位，保留其他欄位；壞檔直接覆寫。例：save(enabled=..., language="en")。"""
     path = path or config_path()
     data = _load(path) or {}
     data.pop("token_sources", None)  # Drop obsolete source setting.
     for key, value in fields.items():
-        data[key] = value if isinstance(value, (str, bool)) else sorted(value)
+        if isinstance(value, Advanced):
+            data[key] = value.to_dict()
+        else:
+            data[key] = value if isinstance(value, (str, bool)) else sorted(value)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

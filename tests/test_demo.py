@@ -9,6 +9,7 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from ai_quota_tray import claude_hook, config, demo  # noqa: E402
+from ai_quota_tray.config import Advanced  # noqa: E402
 from ai_quota_tray.card import status_message  # noqa: E402
 from ai_quota_tray.icon import level_for  # noqa: E402
 from ai_quota_tray.model import ERROR, ProviderState  # noqa: E402
@@ -151,7 +152,7 @@ class SettingsHookButtonTest(unittest.TestCase):
         self.assertFalse(dlg.demo_check.isChecked())
         dlg.demo_check.setChecked(True)
         dlg.accept()
-        self.assertEqual(applied, [({"claude"}, "zh-TW", True)])
+        self.assertEqual(applied, [({"claude"}, "zh-TW", True, Advanced())])
         dlg2, _ = self.make(claude_hook.NOT_INSTALLED, demo_mode=True)
         self.assertTrue(dlg2.demo_check.isChecked())
 
