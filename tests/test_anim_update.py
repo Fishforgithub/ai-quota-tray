@@ -180,7 +180,7 @@ class SettingsAdditionsTest(unittest.TestCase):
         self.assertIn("非 Anthropic、OpenAI、GitHub、Google 官方產品", texts)
         # 業主 2026-09-26 定：動畫一律開著，設定裡不放開關（只有服務勾選與示範模式）
         self.assertEqual({c.objectName() for c in dlg.findChildren(QCheckBox)},
-                         {"claude_enabled", "codex_enabled", "antigravity_enabled", "copilot_enabled", "demoCheck"})
+                         {"claude_enabled", "codex_enabled", "antigravity_enabled", "copilot_enabled", "grok_enabled", "demoCheck"})
         dlg.demo_check.setChecked(True)
         dlg.accept()
         self.assertEqual(applied, [({"claude"}, "zh-TW", True, Advanced())])

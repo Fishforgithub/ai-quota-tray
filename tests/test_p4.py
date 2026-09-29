@@ -320,11 +320,11 @@ class PollerTest(unittest.TestCase):
 
     def test_skips_disabled_and_inflight(self):
         from ai_quota_tray.app import Poller
-        poller = Poller({"claude", "grok"})
+        poller = Poller({"claude", "bogus"})
         self.addCleanup(poller.shutdown)
         self.assertEqual(poller.enabled, {"claude"})
         with mock.patch.object(poller, "_pool") as pool:
-            poller.refresh("grok")  # 已移除的服務一律不抓
+            poller.refresh("bogus")  # 不存在的服務一律不抓
             pool.submit.assert_not_called()
             poller.refresh("claude")
             poller.refresh("claude")  # 還在抓
@@ -351,10 +351,11 @@ class SettingsDialogTest(unittest.TestCase):
         self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · 服務設定（Ver. {display_version()}）")
         self.assertFalse(dlg.windowIcon().isNull())
         self.assertEqual(dlg.selected_enabled(), {"claude", "codex"})
-        self.assertNotIn("grok", dlg.checks)
+        self.assertIn("grok", dlg.checks)  # 個人版才有 Grok（providers.modules）；預設不勾
+        self.assertNotIn("grok", dlg.selected_enabled())
         self.assertEqual(dlg.findChildren(QRadioButton), [])
         descriptions = [w.text() for w in dlg.findChildren(QLabel) if w.objectName() == "sourceDescription"]
-        self.assertEqual(len(descriptions), 4)
+        self.assertEqual(len(descriptions), 5)
         self.assertTrue(any("官方 App Server" in text for text in descriptions))
         self.assertTrue(any("官方 agy CLI" in text for text in descriptions))
         dlg.checks["copilot"].setChecked(True)

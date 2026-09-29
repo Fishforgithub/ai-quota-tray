@@ -76,6 +76,7 @@ STRINGS = {
     "settings.source.codex": "通过官方 App Server 查询；失败时使用本地记录。",
     "settings.source.antigravity": "通过官方 agy CLI 查询；请先运行 agy 登录。",
     "settings.source.copilot": "通过官方 SDK 查询；请先运行 copilot login 登录。",
+    "settings.source.grok": "仅个人版：读取 Grok Build CLI 的本地登录信息；登录约 6 小时过期，会请 Grok CLI 自己续期。",
     "settings.language": "语言",
     "settings.cancel": "取消",
     "settings.save": "保存",

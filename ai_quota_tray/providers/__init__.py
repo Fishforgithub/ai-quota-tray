@@ -8,10 +8,17 @@ import traceback
 from datetime import datetime
 
 from ..model import ERROR, ProviderState
-from . import antigravity, claude, codex, copilot
+from .. import startup
+from . import antigravity, claude, codex, copilot, grok
 
-# 順序＝卡片與設定視窗的顯示順序
-ALL = {m.NAME: m for m in (claude, codex, antigravity, copilot)}
+# 順序＝卡片與設定視窗的顯示順序。
+# Grok 要讀本機 Grok Build CLI 的 token（xAI 還沒回覆能不能用），只給個人版：
+# 有 MSIX 套件身分（Store 版）就不註冊，設定、卡片、通知都看不到它。
+def modules(packaged: bool) -> tuple:
+    return (claude, codex, antigravity, copilot) + (() if packaged else (grok,))
+
+
+ALL = {m.NAME: m for m in modules(startup.is_packaged())}
 
 
 def has_local(name: str) -> bool:

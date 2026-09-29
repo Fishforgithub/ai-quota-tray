@@ -200,6 +200,19 @@ def battery_saver_on() -> bool:
     return bool(kernel32.GetSystemPowerStatus(ctypes.byref(status))) and status.SystemStatusFlag == 1
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", w.UINT), ("dwTime", w.DWORD)]
+
+
+def user_idle_seconds() -> float | None:
+    """整台電腦最後一次滑鼠／鍵盤輸入到現在幾秒（GetLastInputInfo）；取不到回 None。"""
+    info = LASTINPUTINFO(ctypes.sizeof(LASTINPUTINFO), 0)
+    if not user32.GetLastInputInfo(ctypes.byref(info)):
+        return None
+    # 兩個都是 32 位元毫秒計數，約 49 天會繞回，用遮罩相減
+    return ((kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000
+
+
 # 已在執行時再啟動一次：新的那份送這個訊息給舊的那份，讓它打開卡片（不然畫面上什麼都沒發生）
 ACTIVATE_MESSAGE = "AiQuotaTray.Activate"
 

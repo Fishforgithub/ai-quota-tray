@@ -94,6 +94,7 @@ STRINGS = {
     "settings.source.codex": "Offizieller App Server; sonst lokale Daten.",
     "settings.source.antigravity": "Offizielle agy CLI; vorher mit agy anmelden.",
     "settings.source.copilot": "Offizielles SDK; vorher copilot login ausführen.",
+    "settings.source.grok": "Nur Privatversion: liest die lokale Anmeldung der Grok Build CLI; läuft sie ab (ca. 6 Stunden), erneuert die Grok CLI sie selbst.",
     "settings.language": "Sprache",
     "settings.cancel": "Abbrechen",
     "settings.save": "Speichern",

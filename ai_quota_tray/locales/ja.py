@@ -77,6 +77,7 @@ STRINGS_JA: dict[str, str] = {
     "settings.source.codex": "公式 App Server を使用します。取得できない場合はローカルの記録を表示します。",
     "settings.source.antigravity": "公式 agy CLI を使用します。先に agy でログインしてください。",
     "settings.source.copilot": "公式 SDK を使用します。先に copilot login でログインしてください。",
+    "settings.source.grok": "個人版のみ：Grok Build CLI のローカルのログイン情報を読み取ります。約 6 時間で失効した場合は、Grok CLI 自身に更新させます。",
     "settings.language": "言語",
     "settings.cancel": "キャンセル",
     "settings.save": "保存",

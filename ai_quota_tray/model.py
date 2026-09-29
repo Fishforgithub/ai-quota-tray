@@ -24,7 +24,7 @@ PREPARING = "preparing"  # 第一次使用前在背景下載元件（Copilot SDK
 
 # 顯示名稱（個人版）。上線版要避開商標（CLAUDE.md §5），到時只改這裡
 DISPLAY_NAME = {"claude": "Claude", "codex": "Codex",
-                "antigravity": "Antigravity", "copilot": "Copilot"}
+                "antigravity": "Antigravity", "copilot": "Copilot", "grok": "Grok"}
 
 # 檔案來源（statusLine cache、Codex rollout）超過這麼久沒更新就算過期
 FILE_STALE_AFTER = timedelta(minutes=15)

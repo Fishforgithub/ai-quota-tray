@@ -164,6 +164,8 @@ STRINGS: dict[str, tuple[str, str]] = {
                                     "Uses the official agy CLI; sign in with agy first."),
     "settings.source.copilot": ("透過官方 SDK 查詢；請先執行 copilot login 登入。",
                                 "Uses the official SDK; sign in with copilot login first."),
+    "settings.source.grok": ("僅個人版：讀取 Grok Build CLI 的本機登入資料查詢；登入約 6 小時過期，會請 Grok CLI 自己續期。",
+                             "Personal build only: reads the local Grok Build CLI sign-in; when it expires (about 6 hours) the Grok CLI is asked to renew it."),
     "settings.language": ("語言", "Language"),
     "settings.cancel": ("取消", "Cancel"),
     "settings.save": ("儲存", "Save"),

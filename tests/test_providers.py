@@ -324,8 +324,12 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(state.status, ERROR)
         self.assertIn("boom", state.error)
 
-    def test_private_grok_provider_is_not_registered(self):
-        self.assertNotIn("grok", ALL)
+    def test_grok_only_in_personal_build(self):
+        from ai_quota_tray.providers import modules
+        self.assertIn("grok", [m.NAME for m in modules(packaged=False)])
+        self.assertNotIn("grok", [m.NAME for m in modules(packaged=True)])  # Store 版看不到 Grok
+        self.assertEqual([m.NAME for m in modules(packaged=True)],
+                         ["claude", "codex", "antigravity", "copilot"])
 
 
 if __name__ == "__main__":

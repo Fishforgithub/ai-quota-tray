@@ -1,7 +1,9 @@
 """系統匣常駐程式：Qt 主迴圈 + 原生系統匣 + 動態圖示 + 右鍵選單 + hover 卡片。
 
 抓取頻率與畫面更新分離（原則 2）：
-- Claude 定期讀本機快取；Codex、Antigravity、Copilot 只在查看卡片或手動刷新時查詢。
+- Claude 定期讀本機快取；Codex、Antigravity、Copilot 平常只在查看卡片或手動刷新時查詢；
+  但 activity.py 看本機檔案的 mtime 偵測到某一家「正在用」，就對那一家提高查詢頻率
+  （停用後補查一次再降回慢速），閒置時仍然不連網；人不在（滑鼠鍵盤停 USER_IDLE_S 秒）也不查。
 - 抓取在背景執行緒，結果用 signal 丟回主執行緒。
 - 系統匣一律顯示品牌圖示（業主決定），數字只在卡片；卡片開著時自己每秒重算倒數（card.py）。
 - 睡眠喚醒後等 RESUME_DELAY_S 秒重讀 Claude 本機快取。
@@ -36,7 +38,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from . import config, demo, i18n, icon, icon_anim, startup, store_update, win32tray
+from . import activity, config, demo, i18n, icon, icon_anim, startup, store_update, win32tray
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
@@ -54,11 +56,12 @@ LOCAL_POLL_INTERVAL_S = 120
 BACKGROUND_LOCAL = ("codex",)
 # 檔案來源自己有過期規則（model.apply_file_freshness），不用雲端的間隔判斷
 FILE_SOURCES = {"statusline-cache", "rollout"}
-VIEW_REFRESH_INTERVAL_S = {"codex": 120, "antigravity": 300, "copilot": 300}
+VIEW_REFRESH_INTERVAL_S = {"codex": 120, "antigravity": 300, "copilot": 300, "grok": 300}
 RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
 HIDE_DELAY_S = 0.4
 HOLD_OPEN_S = 8.0  # 不是 hover 打開的卡片先停留這麼久（見模組說明）
+USER_IDLE_S = 300  # 滑鼠鍵盤停這麼久 → 人不在，活動偵測不查雲端（activity.py）
 ANIM_CHECK_INTERVAL_S = 10  # 多久看一次 Windows「動畫效果」與省電模式
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
@@ -138,6 +141,15 @@ class TrayApp(QObject):
         freshness_timer.timeout.connect(self._check_resets)
         freshness_timer.start()
         self._timers.append(freshness_timer)
+        # 活動偵測：只 stat 檔案（不連網）；某一家在用才提高那一家的查詢頻率
+        self._watchers = {name: activity.FileWatcher(lister) for name, lister in activity.LISTERS.items()}
+        self._activity = activity.Scheduler(list(self._watchers),
+                                            lambda name: self._watchers[name].latest_mtime())
+        activity_timer = QTimer(self)
+        activity_timer.setInterval(activity.CHECK_INTERVAL_S * 1000)
+        activity_timer.timeout.connect(self._activity_tick)
+        activity_timer.start()
+        self._timers.append(activity_timer)
 
         self.card = Card()
         self._settings: SettingsDialog | None = None
@@ -199,6 +211,23 @@ class TrayApp(QObject):
         for name in BACKGROUND_LOCAL:
             self.poller.refresh(name, local=True)
 
+    def _activity_tick(self) -> None:
+        """某一家最近有寫入（正在用）→ 查它；螢幕鎖住、關閉、或人不在（USER_IDLE_S 沒動滑鼠鍵盤）時不查。
+        不查的期間排程狀態不動，人一回來那一家若還在用、或剛用完，這一輪就會補查。"""
+        if self.demo or self._anim_blockers:
+            return
+        idle = win32tray.user_idle_seconds()
+        if idle is not None and idle >= USER_IDLE_S:
+            return
+        for name in self._activity.tick(self.enabled):
+            state = self.states.get(name)
+            if state is not None and state.status == PREPARING:
+                continue  # Copilot runtime 還在下載，下載完自己會查
+            log.info("活動偵測：%s 在用，查詢", name)
+            if name in VIEW_REFRESH_INTERVAL_S:
+                self._last_remote_attempt[name] = time.monotonic()
+            self.poller.refresh(name)
+
     def _prepare_copilot(self) -> None:
         copilot_provider.start_prepare(self.copilot_ready.emit)
 
@@ -217,6 +246,7 @@ class TrayApp(QObject):
             if name in self.enabled:
                 if name in VIEW_REFRESH_INTERVAL_S:
                     self._last_remote_attempt[name] = time.monotonic()
+                self._activity.note_attempt(name)
                 self.poller.refresh(name)
 
     def _mark_remote_stale(self) -> None:
@@ -244,10 +274,12 @@ class TrayApp(QObject):
             last = self._last_remote_attempt.get(name)
             if last is None or now - last >= interval:
                 self._last_remote_attempt[name] = now
+                self._activity.note_attempt(name)
                 self.poller.refresh(name)
 
     def _on_fetched(self, state: ProviderState) -> None:
         self.poller.done(state.name)
+        self._activity.note_fetch(state.name, state.status == OK)
         if state.name not in self.enabled:
             return  # 抓到一半被使用者取消勾選
         self._accept(state)

@@ -26,7 +26,7 @@ from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, OK, PREPARING, 
                     ProviderState, Window, format_age, format_countdown, pace, parse_time, utcnow)
 
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
-            "antigravity": "Antigravity CLI"}
+            "antigravity": "Antigravity CLI", "grok": "Grok Build CLI"}
 # token 不會自己過期、「開一下 CLI」也沒用的，另外寫提示（i18n key）
 AUTH_HINT = {"antigravity": "card.auth_antigravity", "copilot": "card.auth_copilot"}
 

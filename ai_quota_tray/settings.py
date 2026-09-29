@@ -23,6 +23,8 @@ from .model import DISPLAY_NAME
 from .providers import ALL
 
 ORDER = tuple(ALL)
+ROW_H = 53
+EXTRA_ROWS_H = ROW_H * (len(ORDER) - 4)  # 個人版多一列 Grok；Store 版四列維持原高度
 
 PALETTE = {
     "dark": {"bg": "#23262b", "panel": "#1d2025", "line": "#3a3f47", "text": "#e8eaed",
@@ -178,7 +180,7 @@ class SettingsDialog(QDialog):
         self.setStyleSheet(_style(_palette()))
         # Windows 的標題列約 37px；原本 client 高 653px 對應參考圖的外框約 690px，
         # 2026-09-26 多了底部連結那一行（＋約 30px）。
-        self.setFixedSize(590, 683)
+        self.setFixedSize(590, 683 + EXTRA_ROWS_H)
         self._initial_enabled = set(enabled)
         self._initial_language = i18n.resolve(language)
         self._initial_demo = demo
@@ -275,7 +277,7 @@ class SettingsDialog(QDialog):
     def _table(self) -> QFrame:
         table = QFrame()
         table.setObjectName("table")
-        table.setFixedHeight(260)
+        table.setFixedHeight(260 + EXTRA_ROWS_H)
         rows = QVBoxLayout(table)
         rows.setContentsMargins(1, 1, 1, 1)
         rows.setSpacing(0)
