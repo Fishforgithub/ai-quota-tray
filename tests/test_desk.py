@@ -257,6 +257,17 @@ class DeskAppTest(unittest.TestCase):
             ta.desk.hovered.emit()
         self.assertCountEqual(self.remote_refreshes(), ["codex", "antigravity"], "有最短間隔，不會每次移進來都查")
 
+    def test_pinned_startup_queries_once_after_a_few_seconds(self):
+        """業主 2026-10-04：長條滑過不查，啟動後 Copilot、Grok 一直是「—」→ 釘著啟動時查一次。"""
+        self.assertFalse(self.tray_app._startup_refresh.isActive(), "沒釘：照舊，打開卡片才查")
+        self.app_mod.Poller.refresh.reset_mock()
+        ta = self.make({"claude", "codex", "antigravity"}, config.Desk(True, style="strip"))
+        self.assertTrue(ta._startup_refresh.isActive())
+        self.assertEqual(ta._startup_refresh.interval(), self.app_mod.PINNED_STARTUP_REFRESH_MS)
+        self.assertEqual(self.remote_refreshes(), [], "不是一開就查")
+        ta._startup_refresh.timeout.emit()
+        self.assertCountEqual(self.remote_refreshes(), ["codex", "antigravity"])
+
     def test_starts_as_strip_where_it_was(self):
         self.app_mod.Poller.refresh.reset_mock()
         ta = self.make({"claude", "codex"}, config.Desk(True, style="strip", strip_right=600))

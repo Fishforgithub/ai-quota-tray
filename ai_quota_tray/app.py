@@ -29,8 +29,9 @@ App 沒有主視窗，所以第一次啟動跳一則歡迎通知（只一次，c
   左下角一直有「立即刷新」。
 - strip：貼在工作列上緣的一條（strip.Strip），用量是小電池；滑過、點它都不開完整卡片（業主定）。
 位置與樣子存 config 的 desk、下次啟動照樣釘著；釘著的那個右鍵可以換樣子或取消。
-它不算「一直在看卡片」：照背景規則走（本機紀錄＋活動偵測），滑鼠移進它或手動刷新才查雲端
-（業主 2026-09-26 定：不要一直去打對方的服務）。全螢幕程式在前景時藏起來（FULLSCREEN_CHECK_MS 看一次，
+它不算「一直在看卡片」：照背景規則走（本機紀錄＋活動偵測），滑鼠移進桌面卡片或手動刷新才查雲端
+（業主 2026-09-26 定：不要一直去打對方的服務）；長條滑過不查。唯一的例外是釘著啟動時，開好
+PINNED_STARTUP_REFRESH_MS 後查一次（業主 2026-10-04：不然長條上沒有本機紀錄的 Copilot、Grok 一直是「—」）。全螢幕程式在前景時藏起來（FULLSCREEN_CHECK_MS 看一次，
 長條順便重新貼齊工作列）。取消釘選：hover 卡片頁尾、桌面卡片的頁尾或右鍵選單。
 系統匣右鍵選單不加項目（業主要求保持乾淨）。
 """
@@ -79,6 +80,9 @@ ANIM_CHECK_INTERVAL_S = 10  # 多久看一次 Windows「動畫效果」與省電
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
 FULLSCREEN_CHECK_MS = 2000  # 釘著時多久看一次有沒有全螢幕程式（沒有通知可收）、長條要不要重新貼齊
 SCREEN_SETTLE_MS = 1000  # 螢幕拔掉後等 Windows 搬完視窗，再把桌面卡片拉回螢幕裡
+# 釘著啟動：開好之後等這麼久查一次雲端（業主 2026-10-04：工作列長條滑過不查，Copilot、Grok 這種
+# 沒有本機紀錄的會一直是「—」）。等幾秒是讓本機紀錄先讀完、不跟開機時其他程式搶
+PINNED_STARTUP_REFRESH_MS = 5000
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
 APP_USER_MODEL_ID = "AiQuotaTray.App"
 
@@ -239,7 +243,14 @@ class TrayApp(QObject):
         if "copilot" in self.enabled and not self.demo:
             self._prepare_copilot()  # 新電腦上設定檔已勾 Copilot：先把 runtime 抓好
         if desk is not None and desk.pinned:
-            self.pin(desk.style, save=False)  # 上次釘著就照樣釘回去（不因此查雲端）
+            self.pin(desk.style, save=False)  # 上次釘著就照樣釘回去
+        # 釘著啟動才查一次（見 PINNED_STARTUP_REFRESH_MS）；沒釘的照舊，打開卡片才查
+        self._startup_refresh = QTimer(self)
+        self._startup_refresh.setSingleShot(True)
+        self._startup_refresh.setInterval(PINNED_STARTUP_REFRESH_MS)
+        self._startup_refresh.timeout.connect(self._refresh_on_view)
+        if self.pinned:
+            self._startup_refresh.start()
 
     @property
     def enabled(self) -> set[str]:
@@ -704,7 +715,7 @@ class TrayApp(QObject):
 
     def shutdown(self) -> None:
         for timer in self._timers + [self._hover_timer, self._resume_timer, self._anim_timer,
-                                     self._desk_timer]:
+                                     self._desk_timer, self._startup_refresh]:
             timer.stop()
         self.poller.shutdown()
         if self._settings is not None:
