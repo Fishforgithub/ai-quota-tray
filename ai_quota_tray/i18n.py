@@ -66,8 +66,17 @@ STRINGS: dict[str, tuple[str, str]] = {
                        "First use: downloading Copilot components (about 111 MB)…"),
     "card.error": ("抓取失敗：{err}", "Fetch failed: {err}"),
     "card.unknown_error": ("未知錯誤", "unknown error"),
+    "card.timeout": ("查詢逾時，稍後會再試", "Timed out; will try again shortly"),
     "card.no_data": ("沒有額度資料", "No quota data"),
     "card.unlimited": ("無上限：{items}", "Unlimited: {items}"),
+    # 釘在桌面上的卡片（app.TrayApp.desk）。hover_to_load：還沒查過的服務，滑鼠移進卡片才查雲端
+    "card.pin": ("釘選…", "Pin…"),
+    "pin.card": ("卡片（放在桌面上）", "Card (on the desktop)"),
+    "pin.strip": ("長條（貼在工作列上方）", "Strip (above the taskbar)"),
+    "card.refreshing": ("更新中…", "Updating…"),
+    "strip.demo": ("示範", "Demo"),
+    "card.unpin": ("取消釘選", "Unpin"),
+    "card.hover_to_load": ("滑鼠移到這裡就會更新", "Hover here to update"),
     "card.reset_credits": ("重置券：{count} 張", "Banked resets: {count}"),
     "card.reset_credits_expiry": ("最近到期：{date}", "Earliest expiry: {date}"),
     "card.reset_credits_expiry_unknown": ("最近到期：未提供", "Earliest expiry: unavailable"),
@@ -151,6 +160,35 @@ STRINGS: dict[str, tuple[str, str]] = {
         "Claude Code's status line setting will be restored to how it was before:\n{path}",
     ),
     "settings.hook.failed": ("操作失敗，沒有做任何變更：{err}", "That didn't work and nothing was changed: {err}"),
+    # Antigravity 那一列：說明依 agy_hook.status() 換，按鈕字共用 settings.hook.install／remove
+    "settings.agy_hook.not_installed": ("透過官方 agy CLI 查詢（請先執行 agy 登入）；安裝擷取後更快更穩。",
+                                        "Uses the official agy CLI (sign in with agy first). "
+                                        "Install capture for faster, steadier updates."),
+    "settings.agy_hook.installed": ("已安裝擷取，重開 agy 後生效；移除擷取不會移除 agy。",
+                                    "Capture installed; restart agy to apply. Removing it does not remove agy."),
+    "settings.agy_hook.no_agy": ("沒有偵測到 Antigravity CLI（agy）。", "Antigravity CLI (agy) was not found on this PC."),
+    "settings.agy_hook.unreadable": ("agy 的設定檔無法解析，未做任何變更。",
+                                     "Couldn't read agy's settings file; nothing was changed."),
+    "settings.agy_hook.confirm_install": (
+        "要安裝 Antigravity 狀態列擷取嗎？\n\n"
+        "會修改 Antigravity CLI（agy）的設定檔：\n{path}\n\n"
+        "・加入狀態列指令，執行 AI Usage Meter 的小程式（放在同一個資料夾的 ai-quota-tray 底下），"
+        "它把 agy 自己已經拿到的額度數字存到本機，不呼叫任何 API、不碰登入憑證。\n"
+        "・agy 原本的狀態列會照常顯示；已經開著的 agy 要重開才會生效。\n"
+        "・改之前會先備份設定檔；之後可以隨時回來按「移除擷取」還原。",
+        "Install the Antigravity status line capture?\n\n"
+        "This changes the Antigravity CLI (agy) settings file:\n{path}\n\n"
+        "• A status line command is added that runs a small AI Usage Meter script (stored in an "
+        "ai-quota-tray folder next to it). It saves the quota numbers agy already has to this PC. "
+        "No API calls, and your sign-in is never touched.\n"
+        "• agy's current status line keeps showing as before. Restart any open agy session to apply.\n"
+        "• The settings file is backed up first, and you can press Remove capture here any time to restore it.",
+    ),
+    "settings.agy_hook.confirm_remove": (
+        "要移除 Antigravity 狀態列擷取嗎？\n\n會把 agy 的狀態列設定還原成安裝前的樣子：\n{path}",
+        "Remove the Antigravity status line capture?\n\n"
+        "agy's status line setting will be restored to how it was before:\n{path}",
+    ),
     "settings.demo": ("示範模式", "Demo mode"),
     "settings.version": ("（Ver. {v}）", " (Ver. {v})"),
     "settings.update": ("版本可更新", "Update available"),
@@ -162,8 +200,6 @@ STRINGS: dict[str, tuple[str, str]] = {
     "settings.no": ("否", "No"),
     "settings.source.codex": ("透過官方 App Server 查詢；失敗時退回本機紀錄。",
                               "Uses the official App Server; falls back to local records."),
-    "settings.source.antigravity": ("透過官方 agy CLI 查詢；未登入請先執行 agy。",
-                                    "Uses the official agy CLI; sign in with agy first."),
     "settings.source.copilot": ("透過官方 SDK 查詢；請先執行 copilot login 登入。",
                                 "Uses the official SDK; sign in with copilot login first."),
     "settings.source.grok": ("透過官方 Grok Build CLI（grok agent）查詢；請先執行 grok login 登入。",

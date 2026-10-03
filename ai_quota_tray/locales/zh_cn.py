@@ -24,8 +24,16 @@ STRINGS = {
     "card.preparing": "首次使用：正在下载 Copilot 组件（约 111 MB）…",
     "card.error": "获取失败：{err}",
     "card.unknown_error": "未知错误",
+    "card.timeout": "查询超时，稍后会再试",
     "card.no_data": "暂无额度数据",
     "card.unlimited": "无限制：{items}",
+    "card.pin": "固定…",
+    "pin.card": "卡片（放在桌面上）",
+    "pin.strip": "长条（贴在任务栏上方）",
+    "card.refreshing": "更新中…",
+    "strip.demo": "演示",
+    "card.unpin": "取消固定",
+    "card.hover_to_load": "鼠标移到这里即可更新",
     "card.reset_credits": "重置券：{count} 张",
     "card.reset_credits_expiry": "最早到期：{date}",
     "card.reset_credits_expiry_unknown": "最早到期：未提供",
@@ -66,6 +74,22 @@ STRINGS = {
         "Claude Code 的状态栏设置将恢复为安装前的状态：\n{path}"
     ),
     "settings.hook.failed": "操作失败，未作任何更改：{err}",
+    "settings.agy_hook.not_installed": "通过官方 agy CLI 查询（请先运行 agy 登录）；安装采集后更快更稳。",
+    "settings.agy_hook.installed": "采集已安装，重启 agy 后生效；移除采集不会移除 agy。",
+    "settings.agy_hook.no_agy": "未在此电脑上找到 Antigravity CLI（agy）。",
+    "settings.agy_hook.unreadable": "无法读取 agy 的设置文件，未作任何更改。",
+    "settings.agy_hook.confirm_install": (
+        "要安装 Antigravity 状态栏数据采集吗？\n\n"
+        "这会修改 Antigravity CLI（agy）的设置文件：\n{path}\n\n"
+        "• 添加一条状态栏命令，运行 AI Usage Meter 的小程序（存放在旁边的 ai-quota-tray 文件夹中）。"
+        "它会将 agy 已获取的额度数据保存在本机，不会调用 API，也不会改动登录凭据。\n"
+        "• agy 原有的状态栏仍会照常显示；已打开的 agy 需重启才会生效。\n"
+        "• 修改前会备份设置文件；之后可随时在此点击“移除采集”恢复。"
+    ),
+    "settings.agy_hook.confirm_remove": (
+        "要移除 Antigravity 状态栏数据采集吗？\n\n"
+        "会把 agy 的状态栏设置恢复为安装前的样子：\n{path}"
+    ),
     "settings.demo": "演示模式",
     "settings.version": "（Ver. {v}）",
     "settings.update": "有可用更新",
@@ -75,7 +99,6 @@ STRINGS = {
     "settings.yes": "是",
     "settings.no": "否",
     "settings.source.codex": "通过官方 App Server 查询；失败时使用本地记录。",
-    "settings.source.antigravity": "通过官方 agy CLI 查询；请先运行 agy 登录。",
     "settings.source.copilot": "通过官方 SDK 查询；请先运行 copilot login 登录。",
     "settings.source.grok": "通过官方 Grok Build CLI（grok agent）查询；请先运行 grok login 登录。",
     "settings.language": "语言",

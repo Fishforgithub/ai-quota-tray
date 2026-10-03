@@ -34,8 +34,16 @@ STRINGS = {
     "card.preparing": "Erstmalige Nutzung: Copilot-Komponenten werden heruntergeladen (ca. 111 MB)…",
     "card.error": "Abruf fehlgeschlagen: {err}",
     "card.unknown_error": "unbekannter Fehler",
+    "card.timeout": "Zeitüberschreitung; wird gleich erneut versucht",
     "card.no_data": "Keine Kontingentdaten",
     "card.unlimited": "Unbegrenzt: {items}",
+    "card.pin": "Anheften…",
+    "pin.card": "Karte (auf dem Desktop)",
+    "pin.strip": "Leiste (über der Taskleiste)",
+    "card.refreshing": "Wird aktualisiert…",
+    "strip.demo": "Demo",
+    "card.unpin": "Lösen",
+    "card.hover_to_load": "Zum Aktualisieren mit der Maus darauf zeigen",
     "card.reset_credits": "Reset-Gutscheine: {count}",
     "card.reset_credits_expiry": "Nächster Verfall: {date}",
     "card.reset_credits_expiry_unknown": "Nächster Verfall: nicht verfügbar",
@@ -84,6 +92,24 @@ STRINGS = {
         "Die Statuszeilen-Einstellung von Claude Code wird wiederhergestellt:\n{path}"
     ),
     "settings.hook.failed": "Das hat nicht funktioniert; nichts wurde geändert: {err}",
+    "settings.agy_hook.not_installed": "Offizielle agy CLI (vorher mit agy anmelden). Mit der Erfassung geht es schneller und stabiler.",
+    "settings.agy_hook.installed": "Erfassung installiert; agy neu starten. Entfernen deinstalliert agy nicht.",
+    "settings.agy_hook.no_agy": "Antigravity CLI (agy) wurde auf diesem PC nicht gefunden.",
+    "settings.agy_hook.unreadable": "Die Einstellungsdatei von agy konnte nicht gelesen werden; nichts wurde geändert.",
+    "settings.agy_hook.confirm_install": (
+        "Antigravity-Statuszeilen-Erfassung installieren?\n\n"
+        "Dabei wird die Einstellungsdatei der Antigravity CLI (agy) geändert:\n{path}\n\n"
+        "• Es wird ein Statuszeilen-Befehl hinzugefügt, der ein kleines AI Usage Meter-Skript ausführt "
+        "(im benachbarten Ordner ai-quota-tray). Es speichert die bereits in agy vorhandenen "
+        "Kontingentwerte auf diesem PC. Es gibt keine API-Aufrufe und deine Anmeldung bleibt unberührt.\n"
+        "• Die bisherige Statuszeile von agy wird weiterhin angezeigt. Offene agy-Sitzungen neu starten.\n"
+        "• Die Einstellungsdatei wird zuerst gesichert. Mit „Erfassung aus“ kannst du sie "
+        "jederzeit wiederherstellen."
+    ),
+    "settings.agy_hook.confirm_remove": (
+        "Antigravity-Statuszeilen-Erfassung entfernen?\n\n"
+        "Die Statuszeilen-Einstellung von agy wird wiederhergestellt:\n{path}"
+    ),
     "settings.demo": "Demomodus",
     "settings.version": " (Vers. {v})",
     "settings.update": "Update verfügbar",
@@ -93,7 +119,6 @@ STRINGS = {
     "settings.yes": "Ja",
     "settings.no": "Nein",
     "settings.source.codex": "Offizieller App Server; sonst lokale Daten.",
-    "settings.source.antigravity": "Offizielle agy CLI; vorher mit agy anmelden.",
     "settings.source.copilot": "Offizielles SDK; vorher copilot login ausführen.",
     "settings.source.grok": "Nutzt die offizielle Grok Build CLI (grok agent); vorher mit grok login anmelden.",
     "settings.language": "Sprache",

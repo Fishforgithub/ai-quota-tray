@@ -23,6 +23,16 @@ _check_resets）、卡片的用量速度、Claude 花費上限要不要顯示（
 
 App 沒有主視窗，所以第一次啟動跳一則歡迎通知（只一次，config 的 welcomed），
 已在執行時再啟動一次就請原本那份打開卡片（win32tray.activate_running_instance）。
+
+釘選（2026-10-03 使用者回饋）：hover 卡片頁尾按「釘選…」→ 選兩種樣子之一（pin_style）：
+- card：在 hover 卡片同一個位置留下一張不會自己關的卡片（card.Card(pinned=True)，self.desk），可以拖；
+  左下角一直有「立即刷新」。
+- strip：貼在工作列上緣的一條（strip.Strip），用量是小電池；滑過、點它都不開完整卡片（業主定）。
+位置與樣子存 config 的 desk、下次啟動照樣釘著；釘著的那個右鍵可以換樣子或取消。
+它不算「一直在看卡片」：照背景規則走（本機紀錄＋活動偵測），滑鼠移進它或手動刷新才查雲端
+（業主 2026-09-26 定：不要一直去打對方的服務）。全螢幕程式在前景時藏起來（FULLSCREEN_CHECK_MS 看一次，
+長條順便重新貼齊工作列）。取消釘選：hover 卡片頁尾、桌面卡片的頁尾或右鍵選單。
+系統匣右鍵選單不加項目（業主要求保持乾淨）。
 """
 from __future__ import annotations
 
@@ -35,14 +45,15 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 from PySide6.QtCore import QObject, QTimer, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import activity, config, demo, i18n, icon, icon_anim, startup, store_update, win32tray
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
-from .config import Advanced
+from .config import Advanced, Desk
+from .strip import Strip
 from .model import OK, PREPARING, STALE, ProviderState, carry_over, utcnow
 from .providers import ALL, fetch_local_one, fetch_one
 from .providers import claude as claude_provider
@@ -52,10 +63,11 @@ from .settings import SettingsDialog
 log = logging.getLogger(__name__)
 
 LOCAL_POLL_INTERVAL_S = 120
-# 背景只讀本機紀錄（不連網）的那幾家；Claude 的 fetch 本身就只讀本機快取
-BACKGROUND_LOCAL = ("codex",)
+# 背景只讀本機紀錄（不連網）的那幾家；Claude 的 fetch 本身就只讀本機快取。
+# Antigravity 讀的是狀態列擷取的快取（agy_hook.py；沒裝就讀不到、什麼都不做）
+BACKGROUND_LOCAL = ("codex", "antigravity")
 # 檔案來源自己有過期規則（model.apply_file_freshness），不用雲端的間隔判斷
-FILE_SOURCES = {"statusline-cache", "rollout"}
+FILE_SOURCES = {"statusline-cache", "rollout", "agy-statusline"}
 VIEW_REFRESH_INTERVAL_S = {"codex": 120, "antigravity": 300, "copilot": 300, "grok": 300}
 RESUME_DELAY_S = 10
 HOVER_CHECK_MS = 150
@@ -64,10 +76,14 @@ HOLD_OPEN_S = 8.0  # 不是 hover 打開的卡片先停留這麼久（見模組�
 USER_IDLE_S = 300  # 滑鼠鍵盤停這麼久 → 人不在，活動偵測不查雲端（activity.py）
 ANIM_CHECK_INTERVAL_S = 10  # 多久看一次 Windows「動畫效果」與省電模式
 HOVER_SLOP_PX = 6  # 實體像素：卡片邊緣外這麼近仍算在卡片上
+FULLSCREEN_CHECK_MS = 2000  # 釘著時多久看一次有沒有全螢幕程式（沒有通知可收）、長條要不要重新貼齊
+SCREEN_SETTLE_MS = 1000  # 螢幕拔掉後等 Windows 搬完視窗，再把桌面卡片拉回螢幕裡
 MUTEX_NAME = "Local\\AiQuotaTray.SingleInstance"
 APP_USER_MODEL_ID = "AiQuotaTray.App"
 
-MENU_REFRESH, MENU_QUIT, MENU_STARTUP, MENU_SETTINGS = 1, 2, 3, 4
+MENU_REFRESH, MENU_QUIT, MENU_STARTUP, MENU_SETTINGS, MENU_UNPIN = 1, 2, 3, 4, 5
+MENU_PIN_CARD, MENU_PIN_STRIP = 6, 7
+PIN_CARD, PIN_STRIP = config.PIN_STYLES
 
 
 class Poller(QObject):
@@ -100,6 +116,9 @@ class Poller(QObject):
     def done(self, name: str, local: bool = False) -> None:
         self._inflight.discard(f"{name}:local" if local else name)
 
+    def busy(self, name: str) -> bool:
+        return name in self._inflight or f"{name}:local" in self._inflight
+
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
@@ -109,7 +128,7 @@ class TrayApp(QObject):
     update_checked = Signal(object)  # store_update.check() 的結果（背景執行緒 emit）
 
     def __init__(self, enabled: set[str], language: str = i18n.AUTO, demo_mode: bool = False,
-                 advanced: Advanced | None = None):
+                 advanced: Advanced | None = None, desk: Desk | None = None):
         super().__init__()
         self.language = i18n.resolve(language)
         self.advanced = advanced or Advanced()
@@ -152,6 +171,26 @@ class TrayApp(QObject):
         self._timers.append(activity_timer)
 
         self.card = Card()
+        self.card.pin_clicked.connect(self._on_card_pin_link)
+        # 釘選的兩種樣子（見模組說明）。pinned 是「使用者要它釘著」；全螢幕時看不到但還是釘著
+        self.desk = Card(pinned=True)
+        self.desk.pin_clicked.connect(self.unpin)
+        self.desk.refresh_clicked.connect(self.refresh_all)
+        self.desk.hovered.connect(self._on_desk_hovered)
+        self.desk.menu_requested.connect(self._pinned_menu)
+        self.desk.moved.connect(self._on_desk_moved)
+        self.strip = Strip()
+        self.strip.refresh_clicked.connect(self.refresh_all)
+        self.strip.menu_requested.connect(self._pinned_menu)
+        self.strip.moved.connect(self._on_strip_moved)
+        self.pinned = False
+        self.pin_style = (desk or Desk()).style
+        self._card_pos = (desk or Desk()).pos  # 桌面卡片左上角；兩種樣子的位置分開記
+        self._strip_right = (desk or Desk()).strip_right
+        self._desk_timer = QTimer(self)
+        self._desk_timer.setInterval(FULLSCREEN_CHECK_MS)
+        self._desk_timer.timeout.connect(self._check_fullscreen)
+        QGuiApplication.instance().screenRemoved.connect(self._on_screen_removed)
         self._settings: SettingsDialog | None = None
         self._card_anchor: tuple[int, int, int, int] | None = None
         self._outside_since: float | None = None
@@ -198,6 +237,8 @@ class TrayApp(QObject):
         self._poll_local()
         if "copilot" in self.enabled and not self.demo:
             self._prepare_copilot()  # 新電腦上設定檔已勾 Copilot：先把 runtime 抓好
+        if desk is not None and desk.pinned:
+            self.pin(desk.style, save=False)  # 上次釘著就照樣釘回去（不因此查雲端）
 
     @property
     def enabled(self) -> set[str]:
@@ -209,7 +250,8 @@ class TrayApp(QObject):
             return
         self.poller.refresh("claude")
         for name in BACKGROUND_LOCAL:
-            self.poller.refresh(name, local=True)
+            if name in self.enabled:
+                self.poller.refresh(name, local=True)
 
     def _activity_tick(self) -> None:
         """某一家最近有寫入（正在用）→ 查它；螢幕鎖住、關閉、或人不在（USER_IDLE_S 沒動滑鼠鍵盤）時不查。
@@ -248,6 +290,13 @@ class TrayApp(QObject):
                     self._last_remote_attempt[name] = time.monotonic()
                 self._activity.note_attempt(name)
                 self.poller.refresh(name)
+        self._update_busy()
+
+    def _update_busy(self) -> None:
+        """釘著的卡片／長條：還有服務在查，「立即刷新」就換成「更新中…」（不能再按），查完換回來。"""
+        busy = any(self.poller.busy(name) for name in self.enabled)
+        self.desk.set_refreshing(busy)
+        self.strip.set_refreshing(busy)
 
     def _mark_remote_stale(self) -> None:
         now = utcnow()
@@ -276,9 +325,11 @@ class TrayApp(QObject):
                 self._last_remote_attempt[name] = now
                 self._activity.note_attempt(name)
                 self.poller.refresh(name)
+        self._update_busy()
 
     def _on_fetched(self, state: ProviderState) -> None:
         self.poller.done(state.name)
+        self._update_busy()
         self._activity.note_fetch(state.name, state.status == OK)
         if state.name not in self.enabled:
             return  # 抓到一半被使用者取消勾選
@@ -287,6 +338,7 @@ class TrayApp(QObject):
     def _on_fetched_local(self, state: ProviderState) -> None:
         """背景讀到的本機紀錄：讀不到就算了；比手上的數字舊（例如剛用 App Server 查過）也丟掉。"""
         self.poller.done(state.name, local=True)
+        self._update_busy()
         if state.name not in self.enabled or state.status not in (OK, STALE):
             return
         current = self.states.get(state.name)
@@ -331,11 +383,21 @@ class TrayApp(QObject):
         self.tray.set_tooltip(icon.tooltip([s for _, s in self._card_states() if s is not None]))
         if self.card.isVisible():
             self.card.set_states(self._card_states(), self._banner(), self.advanced.pace)
+        if self.desk.isVisible():
+            self.desk.set_states(self._card_states(), self._banner(), self.advanced.pace,
+                                 self._waiting())
+        if self.strip.isVisible():
+            self.strip.set_states(self._card_states(), self._banner())
 
     def _card_states(self) -> list[tuple[str, ProviderState | None]]:
         if self.demo:
             return demo.sample_states(utcnow())  # 五家全顯示，不管勾了哪幾家
         return [(name, self._shown(self.states.get(name))) for name in ALL if name in self.enabled]
+
+    def _waiting(self) -> set[str]:
+        """桌面卡片上還沒有資料、也沒在查的服務：顯示「滑鼠移到這裡就會更新」，不說「讀取中」。"""
+        return {name for name, state in self._card_states()
+                if state is None and not self.poller.busy(name)}
 
     def _banner(self) -> str | None:
         return tr("card.demo_banner") if self.demo else None
@@ -373,6 +435,117 @@ class TrayApp(QObject):
             self._outside_since = time.monotonic()
         elif time.monotonic() - self._outside_since >= HIDE_DELAY_S:
             self.hide_card()
+
+    # ---------- 釘選：桌面卡片／工作列長條（見模組說明） ----------
+
+    def _on_card_pin_link(self) -> None:
+        """hover 卡片頁尾右邊的連結：釘著就取消；沒釘就跳選單問要卡片還是長條。
+        選卡片：出現在 hover 卡片原本的位置（先記下來，選單開著時 hover 卡片可能已經收起來了）。"""
+        if self.pinned:
+            self.unpin()
+            return
+        pos = (self.card.x(), self.card.y())
+        cmd = self.tray.show_menu(self.pin_menu_items())
+        if cmd == MENU_PIN_CARD:
+            self._card_pos = pos
+        if cmd in (MENU_PIN_CARD, MENU_PIN_STRIP):
+            self.hide_card()
+        self.handle_menu(cmd)
+
+    def pin(self, style: str, save: bool = True) -> None:
+        """釘成 style（card／strip）；已經釘著另一種就換過去。位置用各自記住的。"""
+        self.pinned = True
+        self.pin_style = style
+        self.card.set_pin_state(True)
+        self._other_pinned().hide()
+        self._show_pinned()
+        self._desk_timer.start()
+        log.info("釘選：%s", style)
+        if save:
+            self._save_desk()
+
+    def unpin(self) -> None:
+        self.pinned = False
+        self._desk_timer.stop()
+        self.desk.hide()
+        self.strip.hide()
+        self.card.set_pin_state(False)
+        log.info("取消釘選")
+        self._save_desk()
+
+    def _pinned_widget(self) -> Card | Strip:
+        return self.strip if self.pin_style == PIN_STRIP else self.desk
+
+    def _other_pinned(self) -> Card | Strip:
+        return self.desk if self.pin_style == PIN_STRIP else self.strip
+
+    def _show_pinned(self) -> None:
+        if self.pin_style == PIN_STRIP:
+            self.strip.set_states(self._card_states(), self._banner())
+            self.strip.show_docked(self._strip_right)
+        else:
+            self.desk.set_states(self._card_states(), self._banner(), self.advanced.pace,
+                                 self._waiting())
+            self.desk.show_pinned(self._card_pos)
+        self._update_busy()
+
+    def _save_desk(self) -> None:
+        x, y = self._card_pos or (None, None)
+        config.save(desk=Desk(self.pinned, x, y, self.pin_style, self._strip_right))
+
+    def _on_desk_moved(self) -> None:
+        self._card_pos = (self.desk.x(), self.desk.y())
+        self._save_desk()
+
+    def _on_strip_moved(self) -> None:
+        self._strip_right = self.strip.right
+        self._save_desk()
+
+    def _on_desk_hovered(self) -> None:
+        """滑鼠移進桌面卡片＝在看：跟打開 hover 卡片一樣查雲端（各家有最短間隔）。"""
+        waiting = self._waiting()
+        self._refresh_on_view()
+        if self._waiting() != waiting:
+            self._update_views()  # 「滑鼠移到這裡就會更新」→「讀取中…」
+
+    def _check_fullscreen(self) -> None:
+        """全螢幕程式（遊戲、影片、簡報）在前景、而且跟釘著的那個同一個螢幕 → 藏起來，結束後再出現。
+        長條順便重新貼齊工作列（工作列移動、解析度變了都沒有通知可收）。"""
+        if not self.pinned:
+            return
+        widget = self._pinned_widget()
+        covered = win32tray.fullscreen_app_on(int(widget.winId()))
+        if covered and widget.isVisible():
+            log.info("全螢幕程式在前景，先藏起釘選的%s", self.pin_style)
+            widget.hide()
+        elif not covered and not widget.isVisible():
+            if widget is self.desk:
+                self._card_pos = (self.desk.x(), self.desk.y())
+            self._show_pinned()
+        elif widget is self.strip and widget.isVisible():
+            self.strip.keep_docked()
+
+    def _on_screen_removed(self, _screen) -> None:
+        if self.desk.isVisible():
+            QTimer.singleShot(SCREEN_SETTLE_MS, self.desk.keep_on_screen)
+        if self.strip.isVisible():
+            QTimer.singleShot(SCREEN_SETTLE_MS, self.strip.keep_docked)
+
+    def pin_menu_items(self) -> list[win32tray.MenuItem]:
+        """兩種樣子；釘著時勾起目前那一種（從釘著的那個右鍵就能換）。"""
+        return [(MENU_PIN_CARD, tr("pin.card"), True, self.pinned and self.pin_style == PIN_CARD),
+                (MENU_PIN_STRIP, tr("pin.strip"), True, self.pinned and self.pin_style == PIN_STRIP)]
+
+    def pinned_menu_items(self) -> list[win32tray.MenuItem]:
+        sep = (None, "", True, False)
+        return [(MENU_REFRESH, tr("menu.refresh"), True, False),
+                (MENU_SETTINGS, tr("menu.settings"), True, False), sep,
+                *self.pin_menu_items(), sep,
+                (MENU_UNPIN, tr("card.unpin"), True, False)]
+
+    def _pinned_menu(self) -> None:
+        self.hide_card()
+        self.handle_menu(self.tray.show_menu(self.pinned_menu_items()))
 
     # ---------- 系統匣事件與右鍵選單 ----------
 
@@ -425,6 +598,10 @@ class TrayApp(QObject):
                     # MSIX 版：使用者在工作管理員／Windows 設定關掉過，App 不能自己打開
                     log.info("開機啟動被擋：%s", exc)
                     self._notify("startup", tr("startup.blocked_title"), tr("startup.blocked_body"))
+        elif cmd == MENU_UNPIN:
+            self.unpin()
+        elif cmd in (MENU_PIN_CARD, MENU_PIN_STRIP):
+            self.pin(PIN_CARD if cmd == MENU_PIN_CARD else PIN_STRIP)
         elif cmd == MENU_QUIT:
             QApplication.quit()
 
@@ -525,12 +702,15 @@ class TrayApp(QObject):
             self._refresh_on_view()
 
     def shutdown(self) -> None:
-        for timer in self._timers + [self._hover_timer, self._resume_timer, self._anim_timer]:
+        for timer in self._timers + [self._hover_timer, self._resume_timer, self._anim_timer,
+                                     self._desk_timer]:
             timer.stop()
         self.poller.shutdown()
         if self._settings is not None:
             self._settings.close()
         self.card.close()
+        self.desk.close()
+        self.strip.close()
         self.tray.close()
 
 
@@ -548,6 +728,7 @@ def run() -> int:
     i18n.set_language(language)
     demo_mode = config.load_demo()
     advanced = config.load_advanced()
+    desk = config.load_desk()
 
     if not startup.is_packaged():
         # 工作列用我們的圖示，不歸到 pythonw.exe。MSIX 版的 ID 由套件決定，自己設反而會對不上
@@ -555,7 +736,7 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 沒有任何 Qt 視窗也要常駐
     app.setWindowIcon(QIcon(str(icon.BRAND_PNG)))
-    tray_app = TrayApp(enabled, language, demo_mode, advanced)
+    tray_app = TrayApp(enabled, language, demo_mode, advanced, desk)
     app.aboutToQuit.connect(tray_app.shutdown)
     if not config.load_welcomed():
         tray_app.show_welcome()

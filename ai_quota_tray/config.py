@@ -96,13 +96,48 @@ def load_advanced(path: Path | None = None) -> Advanced:
     return Advanced(threshold, flag("reset_alert"), flag("pace"), flag("spend_limit"))
 
 
-def save(path: Path | None = None, **fields: set[str] | str | bool | Advanced) -> None:
+PIN_STYLES = ("card", "strip")
+
+
+@dataclass(frozen=True)
+class Desk:
+    """釘選（app.TrayApp）：釘著沒有、哪一種樣子、各自的位置（Qt 邏輯像素）。
+    style＝card：桌面卡片，(x, y)＝左上角；strip：工作列長條，strip_right＝右緣（y 跟著工作列走）。
+    兩種位置分開記，換來換去不會亂跑。跑出螢幕由 placement 拉回來，這裡不檢查。"""
+    pinned: bool = False
+    x: int | None = None
+    y: int | None = None
+    style: str = "card"
+    strip_right: int | None = None
+
+    @property
+    def pos(self) -> tuple[int, int] | None:
+        return None if self.x is None or self.y is None else (self.x, self.y)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def load_desk(path: Path | None = None) -> Desk:
+    """欄位缺或型別不對 → 那一欄用預設（沒釘、沒有位置）。"""
+    value = (_load(path or config_path()) or {}).get("desk")
+    value = value if isinstance(value, dict) else {}
+
+    def coord(name: str) -> int | None:
+        v = value.get(name)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    style = value.get("style") if value.get("style") in PIN_STYLES else "card"
+    return Desk(value.get("pinned") is True, coord("x"), coord("y"), style, coord("strip_right"))
+
+
+def save(path: Path | None = None, **fields: set[str] | str | bool | Advanced | Desk) -> None:
     """更新指定欄位，保留其他欄位；壞檔直接覆寫。例：save(enabled=..., language="en")。"""
     path = path or config_path()
     data = _load(path) or {}
     data.pop("token_sources", None)  # Drop obsolete source setting.
     for key, value in fields.items():
-        if isinstance(value, Advanced):
+        if isinstance(value, (Advanced, Desk)):
             data[key] = value.to_dict()
         else:
             data[key] = value if isinstance(value, (str, bool)) else sorted(value)

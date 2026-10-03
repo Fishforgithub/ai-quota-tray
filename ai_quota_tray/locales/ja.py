@@ -24,8 +24,16 @@ STRINGS_JA: dict[str, str] = {
     "card.preparing": "初回使用：Copilot のコンポーネントをダウンロード中（約 111 MB）…",
     "card.error": "取得に失敗しました：{err}",
     "card.unknown_error": "不明なエラー",
+    "card.timeout": "タイムアウトしました。しばらくして再試行します",
     "card.no_data": "利用枠のデータがありません",
     "card.unlimited": "無制限：{items}",
+    "card.pin": "固定…",
+    "pin.card": "カード（デスクトップ上）",
+    "pin.strip": "バー（タスクバーの上）",
+    "card.refreshing": "更新中…",
+    "strip.demo": "デモ",
+    "card.unpin": "固定を解除",
+    "card.hover_to_load": "マウスを合わせると更新します",
     "card.reset_credits": "保有するリセット券：{count} 枚",
     "card.reset_credits_expiry": "最も早い有効期限：{date}",
     "card.reset_credits_expiry_unknown": "最も早い有効期限：情報なし",
@@ -67,6 +75,23 @@ STRINGS_JA: dict[str, str] = {
         "Claude Code のステータスライン設定を以前の状態に戻します：\n{path}"
     ),
     "settings.hook.failed": "処理に失敗しました。変更はありません：{err}",
+    "settings.agy_hook.not_installed": "公式 agy CLI を使用します（先に agy でログイン）。取得を導入すると、より速く安定します。",
+    "settings.agy_hook.installed": "取得を導入済み。agy を再起動すると有効になります。取得を削除しても agy は削除されません。",
+    "settings.agy_hook.no_agy": "この PC に Antigravity CLI（agy）が見つかりません。",
+    "settings.agy_hook.unreadable": "agy の設定ファイルを読み取れませんでした。変更はありません。",
+    "settings.agy_hook.confirm_install": (
+        "Antigravity のステータスライン取得を導入しますか？\n\n"
+        "Antigravity CLI（agy）の設定ファイルを変更します：\n{path}\n\n"
+        "・ステータスラインのコマンドを追加し、AI Usage Meter の小さなスクリプトを実行します。"
+        "スクリプトは同じ場所の ai-quota-tray フォルダーに保存されます。"
+        "agy が持つ利用枠の数値をこの PC に保存します。API 呼び出しは行わず、ログイン情報も変更しません。\n"
+        "・agy の現在のステータスライン表示は維持されます。開いている agy は再起動すると有効になります。\n"
+        "・設定ファイルは先にバックアップされます。いつでもここで「取得を削除」を押して元に戻せます。"
+    ),
+    "settings.agy_hook.confirm_remove": (
+        "Antigravity のステータスライン取得を削除しますか？\n\n"
+        "agy のステータスライン設定を導入前の状態に戻します：\n{path}"
+    ),
     "settings.demo": "デモモード",
     "settings.version": "（Ver. {v}）",
     "settings.update": "更新できます",
@@ -76,7 +101,6 @@ STRINGS_JA: dict[str, str] = {
     "settings.yes": "はい",
     "settings.no": "いいえ",
     "settings.source.codex": "公式 App Server を使用します。取得できない場合はローカルの記録を表示します。",
-    "settings.source.antigravity": "公式 agy CLI を使用します。先に agy でログインしてください。",
     "settings.source.copilot": "公式 SDK を使用します。先に copilot login でログインしてください。",
     "settings.source.grok": "公式の Grok Build CLI（grok agent）で照会します。先に grok login でログインしてください。",
     "settings.language": "言語",

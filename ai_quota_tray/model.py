@@ -218,9 +218,11 @@ def carry_over(prev: ProviderState | None, new: ProviderState, now: datetime) ->
             w.used_pct, w.resets_at = 0.0, None
             rolled.append(w.label)
         windows.append(w)
-    detail = {k: v for k, v in prev.detail.items() if k not in ("api_error", "rolled_over")}
+    detail = {k: v for k, v in prev.detail.items() if k not in ("api_error", "rolled_over", "timeout")}
     if rolled:
         detail["rolled_over"] = rolled
+    if new.detail.get("timeout"):  # 這次只是逾時：卡片用灰字「稍後會再試」，不當成紅字錯誤
+        detail["timeout"] = True
     return ProviderState(new.name, windows, prev.fetched_at, new.status, detail,
                          source=prev.source, error=new.error)
 

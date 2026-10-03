@@ -35,24 +35,37 @@ class SchedulerTest(unittest.TestCase):
 
     def test_active_fetches_at_interval_then_final_fetch(self):
         f = Fake()
-        s = f.make(["antigravity"])
-        f.mtime["antigravity"] = f.now - 5
-        self.assertEqual(s.tick({"antigravity"}), ["antigravity"])  # 一偵測到就查
+        s = f.make(["codex"])
+        f.mtime["codex"] = f.now - 5
+        self.assertEqual(s.tick({"codex"}), ["codex"])  # 一偵測到就查
         f.now += 10
-        self.assertEqual(s.tick({"antigravity"}), [])  # 間隔內不重複
+        self.assertEqual(s.tick({"codex"}), [])  # 間隔內不重複
         f.now += activity.ACTIVE_INTERVAL_S
-        f.mtime["antigravity"] = f.now - 2
-        self.assertEqual(s.tick({"antigravity"}), ["antigravity"])
+        f.mtime["codex"] = f.now - 2
+        self.assertEqual(s.tick({"codex"}), ["codex"])
         # 停止寫入：冷卻期內仍算活躍，繼續照間隔查；過了冷卻補查一次就停
         fetched = 0
         for _ in range(60):
             f.now += 8
-            fetched += len(s.tick({"antigravity"}))
-        self.assertFalse(s.is_active("antigravity"))
+            fetched += len(s.tick({"codex"}))
+        self.assertFalse(s.is_active("codex"))
         self.assertLessEqual(fetched, (activity.COOLDOWN_S // activity.ACTIVE_INTERVAL_S) + 2)
         for _ in range(20):
             f.now += 8
-            self.assertEqual(s.tick({"antigravity"}), [])
+            self.assertEqual(s.tick({"codex"}), [])
+
+    def test_antigravity_waits_longer_while_active(self):
+        # 沒裝擷取時每查一次就是冷啟動一支 agy（2026-10-03 調查）→ 活躍時 60 秒一次，不是 25 秒
+        f = Fake()
+        s = f.make(["antigravity"])
+        f.mtime["antigravity"] = f.now - 5
+        self.assertEqual(s.tick({"antigravity"}), ["antigravity"])
+        f.now += activity.ACTIVE_INTERVAL_S + 1
+        f.mtime["antigravity"] = f.now - 2
+        self.assertEqual(s.tick({"antigravity"}), [], "25 秒還不到它的間隔")
+        f.now += activity.ACTIVE_INTERVAL_BY_NAME["antigravity"] - activity.ACTIVE_INTERVAL_S
+        f.mtime["antigravity"] = f.now - 2
+        self.assertEqual(s.tick({"antigravity"}), ["antigravity"])
 
     def test_final_fetch_happens_once_after_cooldown(self):
         f = Fake()

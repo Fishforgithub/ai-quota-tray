@@ -49,6 +49,9 @@ WM_WTSSESSION_CHANGE, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK = 0x02B1, 0x7, 0x8
 PBT_POWERSETTINGCHANGE = 0x8013
 SPI_GETCLIENTAREAANIMATION = 0x1042  # Windows 設定「動畫效果」
 DEVICE_NOTIFY_WINDOW_HANDLE, NOTIFY_FOR_THIS_SESSION = 0, 0
+# 釘在桌面的卡片遇到全螢幕程式要讓開（app.py）
+QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE = 2, 3, 4
+MONITOR_DEFAULTTONEAREST = 2
 
 
 class GUID(ctypes.Structure):
@@ -138,6 +141,9 @@ _sig(shell32.Shell_NotifyIconGetRect, ctypes.c_long, ctypes.POINTER(NOTIFYICONID
 _sig(kernel32.GetModuleHandleW, w.HMODULE, w.LPCWSTR)
 _sig(kernel32.CreateMutexW, w.HANDLE, w.LPVOID, w.BOOL, w.LPCWSTR)
 _sig(shell32.SetCurrentProcessExplicitAppUserModelID, ctypes.c_long, w.LPCWSTR)
+_sig(shell32.SHQueryUserNotificationState, ctypes.c_long, ctypes.POINTER(ctypes.c_int))
+_sig(user32.GetForegroundWindow, w.HWND)
+_sig(user32.MonitorFromWindow, w.HMONITOR, w.HWND, w.DWORD)
 
 
 def _signed_word(value: int) -> int:
@@ -211,6 +217,24 @@ def user_idle_seconds() -> float | None:
         return None
     # 兩個都是 32 位元毫秒計數，約 49 天會繞回，用遮罩相減
     return ((kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000
+
+
+def fullscreen_app_on(hwnd: int) -> bool:
+    """有全螢幕程式（遊戲、影片、簡報）在前景，而且跟 hwnd 在同一個螢幕上。
+    SHQueryUserNotificationState 只說「有全螢幕程式」、不分螢幕：QUNS_BUSY 時再比前景視窗在哪個螢幕。
+    D3D 獨佔全螢幕、簡報模式不分螢幕一律算。查不到當作沒有。"""
+    state = ctypes.c_int()
+    if shell32.SHQueryUserNotificationState(ctypes.byref(state)) != 0:
+        return False
+    if state.value in (QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE):
+        return True
+    if state.value != QUNS_BUSY:
+        return False
+    foreground = user32.GetForegroundWindow()
+    if not foreground:
+        return True
+    return (user32.MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST)
+            == user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST))
 
 
 # 已在執行時再啟動一次：新的那份送這個訊息給舊的那份，讓它打開卡片（不然畫面上什麼都沒發生）

@@ -8,16 +8,24 @@
   （業主 2026-09-28 定：安全的不列）——進度條上畫一條刻度＝平均使用時這時候應剩多少，
   下面多一行「約 n 後用完」。
 - 倒數欄靠左：↻ 要排成一直線（靠右時 04:20 與 2d01h 寬度不同，↻ 會錯開）。
+- 頁尾右邊「釘選…／取消釘選」連結（pin_clicked；釘成卡片或工作列長條由 app 跳選單問）。
 不搶焦點：Qt.Tool + WindowDoesNotAcceptFocus + WA_ShowWithoutActivating。
+
+釘在桌面上的那一張（pinned=True，app.TrayApp.desk）用同一個類別，差在：不自動關、
+可以用滑鼠拖（放開時 moved）、滑鼠移進來發 hovered（app 這時才查雲端）、右鍵發 menu_requested；
+頁尾左邊多一個一直顯示的「立即刷新」（refresh_clicked，業主要的：不用再按右鍵），查詢中變「更新中…」；
+右邊的「取消釘選」平常藏著（保留位置，不會一 hover 就變高），滑鼠移進來才出現。
+一樣浮在最上層（業主 2026-10-03 定），全螢幕程式在前景時由 app 藏起來。
+另一種釘選樣子（工作列長條）在 strip.py。
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Callable
 
-from PySide6.QtCore import QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import placement
 from .i18n import join, tr, window_label
@@ -79,6 +87,11 @@ def is_dimmed(state: ProviderState | None) -> bool:
     return state.status == STALE or (state.status in (AUTH_EXPIRED, ERROR) and bool(state.windows))
 
 
+def is_failure(state: ProviderState | None) -> bool:
+    """要用紅字提醒的失敗。只是查詢逾時（detail.timeout，例如 agy 偶爾卡住）不算：灰字說稍後再試就好。"""
+    return state is not None and state.status in (AUTH_EXPIRED, ERROR) and not state.detail.get("timeout")
+
+
 def status_message(state: ProviderState) -> str:
     if state.status == AUTH_EXPIRED:
         if state.name in AUTH_HINT:
@@ -90,6 +103,8 @@ def status_message(state: ProviderState) -> str:
         return tr("card.preparing")
     if state.status == ERROR and state.detail.get("needs_hook"):
         return tr("card.claude_needs_hook")
+    if state.status == ERROR and state.detail.get("timeout"):
+        return tr("card.timeout")
     if state.status == ERROR:
         err = state.error or tr("card.unknown_error")
         return tr("card.error", err=err if len(err) <= ERROR_TEXT_MAX else err[:ERROR_TEXT_MAX] + "…")
@@ -144,31 +159,79 @@ class Bar(QWidget):
             p.drawRoundedRect(QRectF(x - 1, 0, 2, h), 1, 1)
 
 
+def link_html(text: str, color: str) -> str:
+    return f'<a href="#" style="color: {color}; text-decoration: none">{text}</a>'
+
+
+def footer_label(font: QFont, align: Qt.AlignmentFlag, on_click: Callable[[], None]) -> QLabel:
+    """頁尾的小字連結。藏起來時保留位置，卡片才不會一 hover 就變高。"""
+    lbl = QLabel()
+    small = QFont(font)
+    small.setPointSizeF(small.pointSizeF() * 0.9)
+    lbl.setFont(small)
+    lbl.setAlignment(align | Qt.AlignVCenter)
+    lbl.setTextFormat(Qt.RichText)
+    lbl.linkActivated.connect(lambda _href: on_click())
+    policy = lbl.sizePolicy()
+    policy.setRetainSizeWhenHidden(True)
+    lbl.setSizePolicy(policy)
+    return lbl
+
+
 class Card(QWidget):
-    def __init__(self):
+    pin_clicked = Signal()  # 頁尾右邊的「釘選…／取消釘選」
+    refresh_clicked = Signal()  # 以下只有 pinned：頁尾左邊的「立即刷新」
+    hovered = Signal()  # 滑鼠移進卡片
+    menu_requested = Signal()  # 在卡片上按右鍵
+    moved = Signal()  # 拖完放開（存位置用）
+
+    def __init__(self, pinned: bool = False):
         super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
                          | Qt.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedWidth(CARD_WIDTH)
+        self.pinned = pinned
         self._theme = _theme()
         self._outer = QVBoxLayout(self)
         self._outer.setContentsMargins(14, 12, 14, 12)
         self._body: QWidget | None = None
         self._tickers: list[Callable[[datetime], None]] = []
         self._anchor: placement.Rect | None = None
+        self._drag_offset: QPoint | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
 
+        # 頁尾：左「立即刷新」（只有釘著的那張，一直顯示——不用再按右鍵）、右「釘選…／取消釘選」
+        self._pin_on = pinned  # True＝右邊顯示「取消釘選」
+        self._refreshing = False  # True＝左邊顯示「更新中…」（不能按）
+        footer = QWidget()
+        row = QHBoxLayout(footer)
+        row.setContentsMargins(0, 0, 0, 0)
+        self._refresh_link = footer_label(self.font(), Qt.AlignLeft, self.refresh_clicked.emit)
+        self._pin_link = footer_label(self.font(), Qt.AlignRight, self.pin_clicked.emit)
+        row.addWidget(self._refresh_link)
+        row.addStretch(1)
+        row.addWidget(self._pin_link)
+        self._outer.addWidget(footer)
+        if pinned:
+            self._pin_link.hide()  # 滑鼠移進來才出現
+        else:
+            self._refresh_link.hide()  # hover 卡片一打開就會查，不需要
+        self._update_footer()
+
     # ---------- 內容 ----------
 
     def set_states(self, states: list[tuple[str, ProviderState | None]],
-                   banner: str | None = None, show_pace: bool = False) -> None:
+                   banner: str | None = None, show_pace: bool = False,
+                   waiting: set[str] | frozenset[str] = frozenset()) -> None:
         """banner：卡片最上方的一行提示（示範模式用，標明這些不是真的數字）。
-        show_pace：進階設定的「顯示用量速度」。"""
+        show_pace：進階設定的「顯示用量速度」。
+        waiting：還沒有資料、也沒在查的服務（釘在桌面時，雲端來源要滑鼠移進來才查）。"""
         now = utcnow()
         self._theme = t = _theme()
+        self._update_footer()  # 語言、深淺色可能換了
         if self._body is not None:
             self._outer.removeWidget(self._body)
             self._body.setParent(None)  # 立即脫離，不等 deleteLater 才消失
@@ -219,7 +282,8 @@ class Card(QWidget):
             row += 1
 
             if state is None:
-                grid.addWidget(label(tr("card.loading"), t["dim"], small=True), row, 0, 1, 4)
+                text = tr("card.hover_to_load" if name in waiting else "card.loading")
+                grid.addWidget(label(text, t["dim"], small=True), row, 0, 1, 4)
                 row += 1
                 continue
 
@@ -231,8 +295,7 @@ class Card(QWidget):
             self._tickers.append(update_note)
 
             if not state.windows:
-                warn = state.status in (AUTH_EXPIRED, ERROR)
-                msg = label(status_message(state), t["warn"] if warn else t["dim"], small=True)
+                msg = label(status_message(state), t["warn"] if is_failure(state) else t["dim"], small=True)
                 msg.setWordWrap(True)
                 grid.addWidget(msg, row, 0, 1, 4)
                 row += 1
@@ -290,13 +353,13 @@ class Card(QWidget):
                 row += 1
 
             if state.status in (AUTH_EXPIRED, ERROR):  # 保留了上一次的數字，但要說明為什麼沒更新
-                msg = label(status_message(state), t["warn"], small=True)
+                msg = label(status_message(state), t["warn"] if is_failure(state) else t["dim"], small=True)
                 msg.setWordWrap(True)
                 grid.addWidget(msg, row, 0, 1, 4)
                 row += 1
 
         self._body = body
-        self._outer.addWidget(body)
+        self._outer.insertWidget(0, body)  # 頁尾連結固定在最下面
         if self.isVisible():
             # 加進已顯示的視窗時 Qt 是「排隊」才顯示新內容，不先 show 的話 adjustSize 只量到
             # 24px 高 → 卡片照小尺寸貼著工作列定位，內容長出來後下半截跑到螢幕外（2026-09-25 業主截圖）
@@ -308,6 +371,25 @@ class Card(QWidget):
         for tick in self._tickers:
             tick(now)
 
+    def set_pin_state(self, pinned: bool) -> None:
+        """hover 卡片的頁尾：已經釘著（卡片或長條）就顯示「取消釘選」，否則「釘選…」。"""
+        self._pin_on = pinned
+        self._update_footer()
+
+    def set_refreshing(self, refreshing: bool) -> None:
+        """還有服務在查：「立即刷新」換成「更新中…」，查完換回來。"""
+        if refreshing != self._refreshing:
+            self._refreshing = refreshing
+            self._update_footer()
+
+    def _update_footer(self) -> None:
+        dim = self._theme["dim"]
+        self._pin_link.setText(link_html(tr("card.unpin" if self._pin_on else "card.pin"), dim))
+        if self._refreshing:
+            self._refresh_link.setText(f'<span style="color: {dim}">{tr("card.refreshing")}</span>')
+        else:
+            self._refresh_link.setText(link_html("↻ " + tr("menu.refresh"), dim))
+
     # ---------- 顯示／定位 ----------
 
     def show_at(self, anchor_physical: placement.Rect) -> None:
@@ -318,7 +400,31 @@ class Card(QWidget):
         self.raise_()
         self._timer.start()
 
+    def show_pinned(self, pos: tuple[int, int] | None) -> None:
+        """釘在桌面：pos＝左上角（邏輯像素），None＝主螢幕右下角；放不進螢幕的會拉回來。"""
+        self._place_pinned(pos)
+        self._tick()
+        self.show()
+        self._timer.start()
+
+    def keep_on_screen(self) -> None:
+        """螢幕拔掉、內容變高之後：整張拉回螢幕裡。"""
+        self._place_pinned((self.x(), self.y()))
+
+    def _place_pinned(self, pos: tuple[int, int] | None) -> None:
+        self.adjustSize()
+        primary = QGuiApplication.primaryScreen()
+        x, y = placement.keep_on_screen(
+            pos, (self.width(), self.height()),
+            [_rect(s.availableGeometry()) for s in QGuiApplication.screens()],
+            _rect(primary.availableGeometry()))
+        if (x, y) != (self.x(), self.y()):
+            self.move(x, y)
+
     def _reposition(self) -> None:
+        if self.pinned:
+            self.keep_on_screen()
+            return
         if self._anchor is None:
             return
         screens = [placement.Screen(_rect(s.geometry()), _rect(s.availableGeometry()),
@@ -330,7 +436,52 @@ class Card(QWidget):
 
     def hideEvent(self, event) -> None:
         self._timer.stop()
+        self._drag_offset = None
         super().hideEvent(event)
+
+    # ---------- 釘在桌面：拖曳、右鍵、滑鼠移入 ----------
+    # 自己算位移而不用 startSystemMove：無邊框的 Tool 視窗沒有系統選單，Qt 那條路可能直接回 False
+
+    def mousePressEvent(self, event) -> None:
+        if self.pinned and event.button() == Qt.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.pos()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_offset is not None and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._drag_offset is not None and event.button() == Qt.LeftButton:
+            self._drag_offset = None
+            self.keep_on_screen()  # 拖到螢幕外就推回來
+            self.moved.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event) -> None:
+        if self.pinned:
+            event.accept()
+            self.menu_requested.emit()
+            return
+        super().contextMenuEvent(event)
+
+    def enterEvent(self, event) -> None:
+        if self.pinned:
+            self._pin_link.show()
+            self.hovered.emit()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if self.pinned:
+            self._pin_link.hide()
+        super().leaveEvent(event)
 
     def paintEvent(self, _event) -> None:
         p = QPainter(self)

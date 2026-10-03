@@ -191,6 +191,15 @@ class CodexTest(unittest.TestCase):
 
 
 class AntigravityTest(unittest.TestCase):
+    def setUp(self):
+        # fetch 會先讀狀態列擷取的快取：指到不存在的地方，免得讀到這台電腦上真的那一份
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        patch = mock.patch.object(antigravity.agy_hook, "cache_path",
+                                  return_value=Path(tmp.name) / "usage-cache.json")
+        patch.start()
+        self.addCleanup(patch.stop)
+
     SAMPLE_USAGE = {
         "status": "SUCCESS",
         "command": {

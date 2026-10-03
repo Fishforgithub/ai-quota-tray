@@ -25,6 +25,9 @@ from pathlib import Path
 
 ACTIVE_WINDOW_S = 60  # 最近這麼久有寫入 → 活躍（實測對話中每 3～20 秒寫一次，等核可時會停十幾秒）
 ACTIVE_INTERVAL_S = 25  # 活躍時每家最短查詢間隔
+# Antigravity 沒裝狀態列擷取時，每查一次就是冷啟動一支 190 MB 的 agy（2～5 秒、偶爾卡 30 秒，2026-10-03 調查）
+# → 放慢；有裝擷取時 providers/antigravity.py 直接讀快取，間隔多少都很便宜
+ACTIVE_INTERVAL_BY_NAME = {"antigravity": 60}
 COOLDOWN_S = 90  # 停止寫入這麼久才算用完，補查一次收尾
 MAX_BACKOFF_S = 300  # 查詢失敗時間隔逐次加倍，最多到這裡
 CHECK_INTERVAL_S = 8  # app 多久呼叫一次 tick
@@ -150,7 +153,8 @@ class Scheduler:
         self._last_fetch[name] = self._clock()
 
     def _interval(self, name: str) -> float:
-        return min(ACTIVE_INTERVAL_S * 2 ** self._failures.get(name, 0), MAX_BACKOFF_S)
+        base = ACTIVE_INTERVAL_BY_NAME.get(name, ACTIVE_INTERVAL_S)
+        return min(base * 2 ** self._failures.get(name, 0), MAX_BACKOFF_S)
 
     def tick(self, enabled: set[str]) -> list[str]:
         """回傳現在該查的服務。"""

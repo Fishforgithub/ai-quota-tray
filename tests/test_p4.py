@@ -338,10 +338,14 @@ class SettingsDialogTest(unittest.TestCase):
         cls.qapp = QApplication.instance() or QApplication([])
 
     def make(self, enabled=None, language="zh-TW"):
+        from ai_quota_tray import agy_hook, claude_hook
         from ai_quota_tray.settings import SettingsDialog
         applied = []
         enabled = {"claude", "codex"} if enabled is None else enabled
-        dlg = SettingsDialog(enabled, language, lambda *args: applied.append(args))
+        # 說明文字跟著擷取狀態變：固定成新使用者的樣子，不受這台電腦有沒有裝擷取影響
+        with mock.patch.object(claude_hook, "status", return_value=claude_hook.NOT_INSTALLED), \
+                mock.patch.object(agy_hook, "status", return_value=agy_hook.NOT_INSTALLED):
+            dlg = SettingsDialog(enabled, language, lambda *args: applied.append(args))
         self.addCleanup(dlg.deleteLater)
         return dlg, applied
 

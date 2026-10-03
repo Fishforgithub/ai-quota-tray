@@ -1,10 +1,10 @@
-"""設定視窗：服務啟用勾選、語言、示範模式，以及 Claude 狀態列擷取的安裝／移除。
+"""設定視窗：服務啟用勾選、語言、示範模式，以及 Claude／Antigravity 狀態列擷取的安裝／移除。
 
 「進階設定…」另開一個小視窗（AdvancedDialog：通知門檻、重置通知、用量速度、Claude 花費上限），
 按確定只是先記在設定視窗裡，跟其他欄位一樣按「儲存」才套用。
 
-Claude 那一列右邊的按鈕會「立刻」安裝或移除 hook（claude_hook.py），不等按儲存：
-它改的是 Claude Code 的設定檔，不是我們的，按下去時先跳確認視窗說清楚會改什麼。
+Claude、Antigravity 那兩列右邊的按鈕會「立刻」安裝或移除擷取（claude_hook.py、agy_hook.py），不等按儲存：
+它改的是 Claude Code／agy 的設定檔，不是我們的，按下去時先跳確認視窗說清楚會改什麼。
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from PySide6.QtGui import QDesktopServices, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFrame, QHBoxLayout, QLabel,
                                QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
-from . import claude_hook, display_version, i18n, store_update
+from . import agy_hook, claude_hook, display_version, i18n, store_update
 from .config import ALERT_THRESHOLDS, Advanced
 from .i18n import tr
 from .icon import ASSETS, BRAND_PNG
@@ -23,6 +23,9 @@ from .model import DISPLAY_NAME
 from .providers import ALL
 
 ORDER = tuple(ALL)
+# 有狀態列擷取的服務：(模組, 按鈕 objectName, 說明與確認文字的 i18n 前綴)。按鈕字共用 settings.hook.install／remove
+HOOKS = {"claude": (claude_hook, "hookButton", "settings.hook"),
+         "antigravity": (agy_hook, "agyHookButton", "settings.agy_hook")}
 ROW_H = 53
 EXTRA_ROWS_H = ROW_H * (len(ORDER) - 4)  # 版面以四列為基準（683）；0.1.4 起兩版都多一列 Grok
 
@@ -76,7 +79,7 @@ def _style(p: dict[str, str]) -> str:
         QPushButton {{ min-width: 88px; min-height: 30px; border-radius: 6px; padding: 0 14px;
                       color: {p['text']}; background: {p['button']}; border: 1px solid {p['line']}; }}
         QPushButton#cancel, QPushButton#save {{ min-width: 116px; min-height: 38px; }}
-        QPushButton#hookButton {{ min-width: 64px; padding: 0 10px; }}  /* 預設 88px 會把說明擠成兩行 */
+        QPushButton#hookButton, QPushButton#agyHookButton {{ min-width: 64px; padding: 0 10px; }}  /* 預設 88px 會把說明擠成兩行 */
         QPushButton#save {{ color: white; background: {p['accent']}; border: none; }}
         QPushButton#save:hover {{ background: {p['accent_hover']}; }}
         QFrame#promo {{ background: #1c2948; border: 1px solid #60729b; border-radius: 9px; }}
@@ -186,7 +189,9 @@ class SettingsDialog(QDialog):
         self._initial_demo = demo
         self._initial_advanced = self.advanced = advanced or Advanced()
         self._on_apply = on_apply
-        self._hook_status = claude_hook.status()
+        self._hook_status = {name: module.status() for name, (module, _, _) in HOOKS.items()}
+        self.hook_descs: dict[str, QLabel] = {}
+        self.hook_buttons: dict[str, QPushButton] = {}
         self.checks: dict[str, QCheckBox] = {}
         self._texts: list[tuple[QLabel | QPushButton, str]] = []  # (元件, i18n key)
 
@@ -305,22 +310,24 @@ class SettingsDialog(QDialog):
             check.setFixedWidth(125)
             self.checks[name] = check
             line.addWidget(check)
-            if name == "claude":  # 說明與按鈕依 hook 狀態變，在 _refresh_hook 填字
+            if name in HOOKS:  # 說明與按鈕依擷取狀態變，在 _refresh_hook 填字
                 description = QLabel()
                 description.setObjectName("sourceDescription")
-                self.claude_desc = description
+                self.hook_descs[name] = description
             else:
                 description = self._text(QLabel(), f"settings.source.{name}", "sourceDescription")
             description.setWordWrap(True)
             line.addWidget(description, 1)
-            if name == "claude":
-                self.hook_button = QPushButton()
-                self.hook_button.setObjectName("hookButton")
-                self.hook_button.clicked.connect(self._on_hook_clicked)
-                line.addWidget(self.hook_button)
+            if name in HOOKS:
+                button = QPushButton()
+                button.setObjectName(HOOKS[name][1])
+                button.clicked.connect(lambda _=False, n=name: self._on_hook_clicked(n))
+                self.hook_buttons[name] = button
+                line.addWidget(button)
             rows.addWidget(row)
             if name != ORDER[-1]:
                 rows.addWidget(_line())
+        self.hook_button, self.claude_desc = self.hook_buttons["claude"], self.hook_descs["claude"]
         return table
 
     def _promo(self) -> QFrame:
@@ -380,17 +387,19 @@ class SettingsDialog(QDialog):
         """設定視窗開著時才查到新版：直接把按鈕叫出來。"""
         self.update_button.setVisible(available)
 
-    # ---------- Claude 狀態列擷取 ----------
+    # ---------- 狀態列擷取（Claude、Antigravity） ----------
 
     def _refresh_hook(self) -> None:
         lang = self.preview_language()
-        self.claude_desc.setText(tr(f"settings.hook.{self._hook_status}", lang))
-        actions = {claude_hook.NOT_INSTALLED: "settings.hook.install",
-                   claude_hook.INSTALLED: "settings.hook.remove"}
-        key = actions.get(self._hook_status)
-        self.hook_button.setVisible(key is not None)  # 沒裝 Claude Code、舊版 hook、讀不懂：不給按
-        if key:
-            self.hook_button.setText(tr(key, lang))
+        for name, (module, _, prefix) in HOOKS.items():
+            status = self._hook_status[name]
+            self.hook_descs[name].setText(tr(f"{prefix}.{status}", lang))
+            key = {module.NOT_INSTALLED: "settings.hook.install",
+                   module.INSTALLED: "settings.hook.remove"}.get(status)
+            button = self.hook_buttons[name]
+            button.setVisible(key is not None)  # 沒裝那個 CLI、舊版 hook、讀不懂：不給按
+            if key:
+                button.setText(tr(key, lang))
 
     def confirm(self, text: str) -> bool:
         lang = self.preview_language()
@@ -402,18 +411,19 @@ class SettingsDialog(QDialog):
         box.setDefaultButton(QMessageBox.No)
         return box.exec() == QMessageBox.Yes
 
-    def _on_hook_clicked(self) -> None:
+    def _on_hook_clicked(self, name: str = "claude") -> None:
+        module, _, prefix = HOOKS[name]
         lang = self.preview_language()
-        installing = self._hook_status == claude_hook.NOT_INSTALLED
-        text = tr("settings.hook.confirm_install" if installing else "settings.hook.confirm_remove",
-                  lang, path=claude_hook.settings_path())
+        installing = self._hook_status[name] == module.NOT_INSTALLED
+        text = tr(f"{prefix}.confirm_install" if installing else f"{prefix}.confirm_remove",
+                  lang, path=module.settings_path())
         if not self.confirm(text):
             return
         try:
-            claude_hook.install() if installing else claude_hook.uninstall()
-        except (claude_hook.HookError, OSError) as exc:
+            module.install() if installing else module.uninstall()
+        except (module.HookError, OSError) as exc:
             QMessageBox.warning(self, "AI Usage Meter", tr("settings.hook.failed", lang, err=exc))
-        self._hook_status = claude_hook.status()
+        self._hook_status[name] = module.status()
         self._refresh_hook()
 
     # ---------- 進階設定 ----------

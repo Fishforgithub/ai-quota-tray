@@ -95,3 +95,48 @@ def place(anchor: Rect, size: tuple[int, int], available: Rect) -> tuple[int, in
     x = min(max(x, al + GAP), ar - w - GAP)
     y = min(max(y, at + GAP), ab - h - GAP)
     return x, y
+
+
+def keep_on_screen(pos: tuple[int, int] | None, size: tuple[int, int], available: list[Rect],
+                   primary: Rect) -> tuple[int, int]:
+    """釘在桌面的卡片：整張放進「跟它重疊最多的那個螢幕」的可用區域，回傳左上角（邏輯像素）。
+    拖到一半出界 → 推回來；螢幕拔掉、解析度變了、跟哪個螢幕都不重疊、或還沒有位置（None）
+    → 主螢幕右下角（工作列上方，跟 hover 卡片差不多的地方）。"""
+    w, h = size
+    best = None
+    if pos is not None:
+        x, y = pos
+
+        def overlap(r: Rect) -> int:
+            return (max(0, min(x + w, r[2]) - max(x, r[0]))
+                    * max(0, min(y + h, r[3]) - max(y, r[1])))
+
+        best = max(available, key=overlap, default=None)
+        if best is not None and overlap(best) == 0:
+            best = None
+    if best is None:
+        best = primary
+        x, y = primary[2] - w - GAP, primary[3] - h - GAP
+    left, top, right, bottom = best
+    # 比螢幕還大（理論上不會）就貼齊左上
+    return max(left, min(x, right - w)), max(top, min(y, bottom - h))
+
+
+def dock_strip(right: int | None, size: tuple[int, int],
+               screens: list[tuple[Rect, Rect]]) -> tuple[int, int]:
+    """工作列長條（strip.py）：貼著工作列上緣（工作列在螢幕上方就貼它的下緣），回傳左上角（邏輯像素）。
+    screens＝[(geometry, available), …]，第一個是主螢幕。right＝長條右緣：它的水平中心落在哪個螢幕
+    就貼哪個（所以左右拖可以拖到別的螢幕）；都不在（螢幕拔掉）或 None → 主螢幕、靠右（系統匣上方）。
+    工作列在左右兩側或自動隱藏 → 貼可用區域底部。"""
+    w, h = size
+    chosen = None
+    if right is not None:
+        center = right - w / 2
+        chosen = next((s for s in screens if s[0][0] <= center < s[0][2]), None)
+    if chosen is None:
+        chosen = screens[0]
+        right = chosen[1][2] - GAP
+    geometry, (left, top, avail_right, bottom) = chosen
+    taskbar_on_top = top > geometry[1] and bottom == geometry[3]
+    y = top if taskbar_on_top else bottom - h
+    return max(left, min(right - w, avail_right - w)), y
