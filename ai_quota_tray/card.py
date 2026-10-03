@@ -37,6 +37,7 @@ THEMES = {
               "track": "#e3e6ea", "warn": "#c5221f"},
 }
 CARD_WIDTH = 300
+PROVIDER_NAME_COLOR = "#00BFFF"
 BAR_WIDTH, BAR_MIN_WIDTH = 110, 60
 BAR_HEIGHT, TICK_HEIGHT = 6, 10  # 刻度比條高一點，條在中間
 ERROR_TEXT_MAX = 60
@@ -210,7 +211,8 @@ class Card(QWidget):
                 row += 1
             dim = is_dimmed(state)
             text_c = t["dim"] if dim else t["text"]
-            grid.addWidget(label(DISPLAY_NAME.get(name, name), text_c, bold=True), row, 0, 1, 2)
+            grid.addWidget(label(DISPLAY_NAME.get(name, name), PROVIDER_NAME_COLOR, bold=True),
+                           row, 0, 1, 2)
             note_lbl = label("", t["dim"], small=True, align=right)
             grid.addWidget(note_lbl, row, 2, 1, 2)
             row += 1
