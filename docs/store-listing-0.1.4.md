@@ -10,7 +10,7 @@ Grok 走官方 Grok Build CLI 的 `grok agent stdio`（ACP），**App 仍然不�
 3. **產品功能**：五語各換一條（支援工具那條）。
 4. **runFullTrust 說明**：已同步改在 [store-listing.md](store-listing.md) §5（第 3 條加上 Grok）。更新版通常不會再問；有跳出來才貼。
 5. **認證注意事項**（產品層級的「其他測試資訊」）：已同步改在 [store-listing.md](store-listing.md) §6（工具清單加 Grok、示範模式「四個服務」→「五個服務」）。⚠️ Partner Center 裡實際存的是 0.1.2 時的五語版，那兩句要逐語更新。
-6. 截圖：業主要求換成新版（淺藍服務名稱、Codex 重置券、Grok）→ `demo.py` 的 Codex 範例補了重置券 2 張，`packaging/store_shots.py` 重畫五語 15 張，已在 Submission 4 原位替換。⚠️ 上傳的 0.1.4.0 套件是在這個 demo 改動**之前**打包的，所以 App 內的示範模式看不到重置券（截圖有）；下次打包就會一致。
+6. 截圖：業主要求換成新版（淺藍服務名稱、Codex 重置券、Grok）→ `demo.py` 的 Codex 範例補了重置券 2 張，`packaging/store_shots.py` 重畫五語 15 張，已在 Submission 4 原位替換。業主要求套件也要一致 → 同版號 0.1.4.0 重新打包（`8f45f08` 之後），打包版以暫存設定開示範模式截圖確認有重置券與 Grok，業主重新上傳。
 7. 隱私權政策網址不變（`https://fish-zero.com/aiusagemeter-privacy`），內容已改寫（fish-zero-web，⚠️ **送審前要先上線**）。
 
 上限：新增功能 1,500 字元、每條功能 200 字元。貼純文字、一行一項、不加項目符號。
