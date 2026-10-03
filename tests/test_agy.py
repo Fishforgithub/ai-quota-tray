@@ -175,7 +175,6 @@ class HookScriptRunTest(FakeAgyHome):
         self.assertEqual(self.run_hook(PAYLOAD), "")
         self.assertLess(time.monotonic() - start, agy_hook.ORIGINAL_TIMEOUT_MS / 1000 + 20)
         time.sleep(1)
-        from test_claude_hook import processes_with
         self.assertFalse(processes_with(marker), "卡住的原本狀態列要被收掉")
 
 
@@ -297,6 +296,14 @@ class FetchTest(unittest.TestCase):
                                side_effect=subprocess.TimeoutExpired("agy", 25, output=b"")):
             with self.assertRaises(TimeoutError):
                 antigravity._run_once("agy", 25)
+
+
+def processes_with(marker: str) -> list[str]:
+    """目前在跑、命令列含 marker 的行程（跟 test_claude_hook 那支一樣；測試檔之間不互相 import）。"""
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    return [line for line in out.splitlines() if marker in line and "Get-CimInstance" not in line]
 
 
 class AntigravityUsage:

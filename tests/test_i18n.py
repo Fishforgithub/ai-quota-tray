@@ -10,7 +10,7 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from ai_quota_tray import alerts, config, display_version, i18n  # noqa: E402
-from ai_quota_tray.card import header_note, status_message, window_countdown  # noqa: E402
+from ai_quota_tray.card import api_warning, status_message, window_countdown  # noqa: E402
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, OK, STALE, ProviderState,  # noqa: E402
                                  format_age, make_window)
 
@@ -102,8 +102,8 @@ class EnglishTextTest(unittest.TestCase):
         rolled = ProviderState("codex", [make_window(0, None, 18000)], NOW, STALE,
                                {"rolled_over": ["5h"]})
         self.assertEqual(window_countdown(rolled.windows[0], rolled, NOW), "Reset")
-        self.assertEqual(header_note(ProviderState("codex", [], NOW, OK, {"api_error": "x"}), NOW),
-                         ("Official source failed; showing local records", True))
+        self.assertEqual(api_warning(ProviderState("codex", [], NOW, OK, {"api_error": "x"})),
+                         "Official source failed; showing local records")
 
     def test_window_labels_translate_only_for_display(self):
         english(self)

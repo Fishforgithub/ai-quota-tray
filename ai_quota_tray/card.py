@@ -8,7 +8,10 @@
   （業主 2026-09-28 定：安全的不列）——進度條上畫一條刻度＝平均使用時這時候應剩多少，
   下面多一行「約 n 後用完」。
 - 倒數欄靠左：↻ 要排成一直線（靠右時 04:20 與 2d01h 寬度不同，↻ 會錯開）。
-- 頁尾右邊「釘選…／取消釘選」連結（pin_clicked；釘成卡片或工作列長條由 app 跳選單問）。
+  區塊右上的小字（方案名稱、「n 分鐘前」）與頁尾的「釘選…」也放在倒數那一欄、靠左，跟 ↻ 切齊
+  （業主 2026-10-04 要求）；長的「官方介面失敗」警告不放那一欄（會把整欄撐寬），在名稱下面另起一行。
+- 頁尾「釘選…／取消釘選」連結（pin_clicked；釘成卡片或工作列長條由 app 跳選單問）。
+  頁尾兩個連結每次重畫都搬進新的表格最後一列（setParent 會把它們藏起來，搬完要照狀態再顯示）。
 不搶焦點：Qt.Tool + WindowDoesNotAcceptFocus + WA_ShowWithoutActivating。
 
 釘在桌面上的那一張（pinned=True，app.TrayApp.desk）用同一個類別，差在：不自動關、
@@ -25,7 +28,7 @@ from typing import Callable
 
 from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from . import placement
 from .i18n import join, tr, window_label
@@ -70,14 +73,17 @@ def window_countdown(win: Window, state: ProviderState, now: datetime) -> str:
     return countdown
 
 
-def header_note(state: ProviderState, now: datetime) -> tuple[str, bool]:
-    """區塊右上角的小字：(文字, 是否警示色)。"""
-    if state.detail.get("api_error"):
-        return tr("card.api_failed"), True
+def header_note(state: ProviderState, now: datetime) -> str:
+    """區塊右上的小字（跟 ↻ 倒數同一欄）：資料不是剛抓到的就寫「n 分鐘前」，否則寫方案名稱。"""
     if is_dimmed(state):
-        return format_age(state.fetched_at, now), False
+        return format_age(state.fetched_at, now)
     plan = state.detail.get("subscription_tier") or state.detail.get("plan_type")
-    return (str(plan) if plan else ""), False
+    return str(plan) if plan else ""
+
+
+def api_warning(state: ProviderState) -> str | None:
+    """官方介面失敗、顯示的是本機紀錄：名稱下面另起一行的警示（太長，不放在 ↻ 那一欄）。"""
+    return tr("card.api_failed") if state.detail.get("api_error") else None
 
 
 def is_dimmed(state: ProviderState | None) -> bool:
@@ -203,22 +209,16 @@ class Card(QWidget):
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
 
-        # 頁尾：左「立即刷新」（只有釘著的那張，一直顯示——不用再按右鍵）、右「釘選…／取消釘選」
-        self._pin_on = pinned  # True＝右邊顯示「取消釘選」
+        # 頁尾：左「立即刷新」（只有釘著的那張，一直顯示——不用再按右鍵）、↻ 那一欄「釘選…／取消釘選」。
+        # 兩個連結放在表格最後一列（set_states 每次搬進新表格），才切得齊 ↻
+        self._pin_on = pinned  # True＝顯示「取消釘選」
         self._refreshing = False  # True＝左邊顯示「更新中…」（不能按）
-        footer = QWidget()
-        row = QHBoxLayout(footer)
-        row.setContentsMargins(0, 0, 0, 0)
+        self._hovered = False  # 釘著的那張：滑鼠在上面才顯示「取消釘選」
         self._refresh_link = footer_label(self.font(), Qt.AlignLeft, self.refresh_clicked.emit)
-        self._pin_link = footer_label(self.font(), Qt.AlignRight, self.pin_clicked.emit)
-        row.addWidget(self._refresh_link)
-        row.addStretch(1)
-        row.addWidget(self._pin_link)
-        self._outer.addWidget(footer)
-        if pinned:
-            self._pin_link.hide()  # 滑鼠移進來才出現
-        else:
-            self._refresh_link.hide()  # hover 卡片一打開就會查，不需要
+        self._pin_link = footer_label(self.font(), Qt.AlignLeft, self.pin_clicked.emit)
+        for link in (self._refresh_link, self._pin_link):
+            link.setParent(self)  # 第一次 set_states 之前先掛在卡片底下藏著，不能變成獨立的小視窗
+            link.hide()
         self._update_footer()
 
     # ---------- 內容 ----------
@@ -233,6 +233,9 @@ class Card(QWidget):
         self._theme = t = _theme()
         self._update_footer()  # 語言、深淺色可能換了
         if self._body is not None:
+            for link in (self._refresh_link, self._pin_link):  # 頁尾連結要留著，不跟舊表格一起刪掉
+                link.setParent(self)
+                link.hide()
             self._outer.removeWidget(self._body)
             self._body.setParent(None)  # 立即脫離，不等 deleteLater 才消失
             self._body.deleteLater()
@@ -276,9 +279,9 @@ class Card(QWidget):
             dim = is_dimmed(state)
             text_c = t["dim"] if dim else t["text"]
             grid.addWidget(label(DISPLAY_NAME.get(name, name), PROVIDER_NAME_COLOR, bold=True),
-                           row, 0, 1, 2)
-            note_lbl = label("", t["dim"], small=True, align=right)
-            grid.addWidget(note_lbl, row, 2, 1, 2)
+                           row, 0, 1, 3)
+            note_lbl = label("", t["dim"], small=True)
+            grid.addWidget(note_lbl, row, 3)  # 跟 ↻ 倒數同一欄、靠左
             row += 1
 
             if state is None:
@@ -288,11 +291,16 @@ class Card(QWidget):
                 continue
 
             def update_note(now, s=state, lbl=note_lbl):
-                text, warn = header_note(s, now)
-                lbl.setText(text)
-                lbl.setStyleSheet(f"color: {t['warn'] if warn else t['dim']}")
+                lbl.setText(header_note(s, now))
             update_note(now)
             self._tickers.append(update_note)
+
+            warning = api_warning(state)
+            if warning:
+                msg = label(warning, t["warn"], small=True)
+                msg.setWordWrap(True)
+                grid.addWidget(msg, row, 0, 1, 4)
+                row += 1
 
             if not state.windows:
                 msg = label(status_message(state), t["warn"] if is_failure(state) else t["dim"], small=True)
@@ -358,8 +366,14 @@ class Card(QWidget):
                 grid.addWidget(msg, row, 0, 1, 4)
                 row += 1
 
+        grid.setRowMinimumHeight(row, 2)
+        row += 1
+        grid.addWidget(self._refresh_link, row, 0, 1, 3)
+        grid.addWidget(self._pin_link, row, 3)  # 跟 ↻ 倒數同一欄、靠左
+
         self._body = body
-        self._outer.insertWidget(0, body)  # 頁尾連結固定在最下面
+        self._outer.addWidget(body)
+        self._show_footer()
         if self.isVisible():
             # 加進已顯示的視窗時 Qt 是「排隊」才顯示新內容，不先 show 的話 adjustSize 只量到
             # 24px 高 → 卡片照小尺寸貼著工作列定位，內容長出來後下半截跑到螢幕外（2026-09-25 業主截圖）
@@ -381,6 +395,13 @@ class Card(QWidget):
         if refreshing != self._refreshing:
             self._refreshing = refreshing
             self._update_footer()
+
+    def _show_footer(self) -> None:
+        """搬進新表格後 Qt 會把連結藏起來：照狀態再設一次（藏起來時保留位置，卡片不會變高）。"""
+        if self._body is None:
+            return  # 還沒排版，連結不在任何表格裡
+        self._refresh_link.setVisible(self.pinned)  # hover 卡片一打開就會查，不需要
+        self._pin_link.setVisible(not self.pinned or self._hovered)  # 釘著的：滑鼠移進來才出現
 
     def _update_footer(self) -> None:
         dim = self._theme["dim"]
@@ -474,13 +495,15 @@ class Card(QWidget):
 
     def enterEvent(self, event) -> None:
         if self.pinned:
-            self._pin_link.show()
+            self._hovered = True
+            self._show_footer()
             self.hovered.emit()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         if self.pinned:
-            self._pin_link.hide()
+            self._hovered = False
+            self._show_footer()
         super().leaveEvent(event)
 
     def paintEvent(self, _event) -> None:

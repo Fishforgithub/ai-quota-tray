@@ -102,7 +102,7 @@ class DeskCardTest(unittest.TestCase):
         card.set_states([("claude", None)])
         card.show()
         link = card._pin_link
-        QTest.mouseClick(link, Qt.LeftButton, Qt.NoModifier, QPoint(link.width() - 5, link.height() // 2))
+        QTest.mouseClick(link, Qt.LeftButton, Qt.NoModifier, QPoint(5, link.height() // 2))  # 靠左
         self.assertEqual(clicked, [True])
 
     def test_hover_card_is_not_draggable(self):

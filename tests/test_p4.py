@@ -55,7 +55,7 @@ class CarryOverTest(unittest.TestCase):
         out = carry_over(codex(fetched=NOW - timedelta(minutes=7)),
                          ProviderState("codex", [], None, AUTH_EXPIRED), NOW)
         self.assertTrue(is_dimmed(out))
-        self.assertEqual(header_note(out, NOW), ("7 分鐘前", False))
+        self.assertEqual(header_note(out, NOW), "7 分鐘前")
         self.assertFalse(is_dimmed(ProviderState("codex", [], None, AUTH_EXPIRED)))
 
 

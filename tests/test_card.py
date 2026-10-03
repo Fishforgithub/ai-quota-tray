@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from ai_quota_tray import placement  # noqa: E402
-from ai_quota_tray.card import Card, header_note, status_message, window_countdown  # noqa: E402
+from ai_quota_tray.card import Card, api_warning, header_note, status_message, window_countdown  # noqa: E402
 from ai_quota_tray.model import (AUTH_EXPIRED, DISABLED, ERROR, OK, STALE,  # noqa: E402
                                  ProviderState, format_age, format_countdown, make_window)
 
@@ -91,10 +91,10 @@ class CardTest(unittest.TestCase):
         rolled = st("codex", STALE, [make_window(0, None, 18000)], detail={"rolled_over": ["5h"]},
                     fetched_at=NOW - timedelta(minutes=20))
         self.assertEqual(window_countdown(rolled.windows[0], rolled, NOW), "已重置")
-        self.assertEqual(header_note(rolled, NOW), ("20 分鐘前", False))
-        self.assertEqual(header_note(st("codex", detail={"plan_type": "Plus"}), NOW),
-                         ("Plus", False))
-        self.assertTrue(header_note(st("codex", detail={"api_error": "HTTP 500"}), NOW)[1])
+        self.assertEqual(header_note(rolled, NOW), "20 分鐘前")
+        self.assertEqual(header_note(st("codex", detail={"plan_type": "Plus"}), NOW), "Plus")
+        self.assertEqual(api_warning(st("codex", detail={"api_error": "HTTP 500"})), "官方介面失敗，顯示本機紀錄")
+        self.assertIsNone(api_warning(st("codex")))
         self.assertIn("Codex CLI", status_message(st("codex", AUTH_EXPIRED)))
         self.assertEqual(status_message(st("claude", DISABLED)), "未啟用")
         self.assertTrue(status_message(st("claude", ERROR, error="x" * 200)).endswith("…"))
