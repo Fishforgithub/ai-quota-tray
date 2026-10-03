@@ -25,7 +25,8 @@ def sample_states(now: datetime) -> list[tuple[str, ProviderState]]:
         ("codex", ProviderState("codex", [
             make_window(93, at(47 * 60), 5 * _H),       # 剩 7%：紅色
             make_window(56, at(2 * _D + 9 * _H), 7 * _D),
-        ], now, OK, {"plan_type": "plus"}, source="demo")),
+        ], now, OK, {"plan_type": "plus", "reset_credits_count": 2,  # 0.1.2 的重置券也要看得到
+                     "reset_credits_next_expiry": at(9 * _D + 5 * _H).isoformat()}, source="demo")),
         ("antigravity", ProviderState("antigravity", [
             make_window(77, at(5 * _D + 20 * _H), 7 * _D, label="Gemini"),   # 剩 23%：黃色
             make_window(0, at(6 * _D + 2 * _H), 7 * _D, label="Claude/GPT"),

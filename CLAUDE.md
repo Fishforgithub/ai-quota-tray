@@ -107,6 +107,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 隱私權政策／產品頁（fish-zero-web `9cef45b`，已上線）：Grok 列進「啟動的官方工具」、補「正在使用時最快每 25 秒查一次、停用 90 秒補查、鎖定／螢幕關閉／5 分鐘沒動不查」、補「為了判斷正在用哪個工具，只看檔案修改時間、不讀內容」、免責加 xAI；smoke 測試鎖住。
 - 商店文案：`docs/store-listing-0.1.4.md`（五語新增功能＋說明逐句替換）；`docs/store-listing.md` §5 runFullTrust、§6 認證注意事項已同步（加 Grok、「五個服務」、活動偵測只看修改時間）。
 - 真 CLI 實測（2026-10-03）：probe 回 `ok`、週 29%、SuperGrok、`source=grok-cli`，查完沒有殘留 grok 行程。unittest 222 過。
+- ⏸️ **Submission 4（0.1.4.0，ID `1152921505702033238`）2026-10-03 填好、等業主確認送出**：套件業主拖入（0.1.3.0 已移除，⚠️ 套件頁那個 Save 用 ref 點沒生效、用座標點才存進去）；五語「此版本新增功能」、說明三句、功能一條照 `docs/store-listing-0.1.4.md` 改；五語截圖 15 張原位替換成新版（重置券、淺藍名稱、Grok）；「其他測試資訊」加 Grok、「all five services」。每一頁都重新載入核對過。💡 這次清單頁的 textarea／input 沒有 `name`（英文頁第一次載入有），要用索引：0＝說明、1＝新增功能、2～13＝功能、16＝簡短描述。💡 截圖替換：`img[alt=listing-screenshot-image]` 的 data URI 解碼後大小＝本機 PNG 大小，可以拿來確認換成功。⚠️ 送審沒跑 WACK（0.1.3.0 PASS 之後只改 Python 碼）；套件身分的 Grok 實測也沒做（要先移除業主帳號的 Store 版）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
