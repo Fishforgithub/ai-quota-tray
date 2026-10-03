@@ -1,5 +1,5 @@
 """AI Usage Meter：系統匣顯示各家 AI 訂閱的剩餘額度。"""
-__version__ = "0.1.4"  # 與 pyproject 一致（test_msix 檢查）；MSIX／exe 版本資訊是四段式，見 display_version
+__version__ = "0.1.5"  # 與 pyproject 一致（test_msix 檢查）；MSIX／exe 版本資訊是四段式，見 display_version
 
 
 def display_version() -> str:

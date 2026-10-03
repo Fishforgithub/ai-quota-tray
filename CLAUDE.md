@@ -110,6 +110,24 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 送審後的小改（**不在 0.1.4.0 套件裡，進下一版**）：設定視窗副標題原本寫「查看時更新雲端額度」，活動偵測上線後不對 → 改成「打開卡片或使用工具時更新雲端額度」（五語，`settings.subtitle`）。用 Windows 真字型量過，五語都放得下（離「語言」≥144px）；⚠️ offscreen 平台沒有字型、量出來的寬度不能信。
 - ✅ **Submission 4（0.1.4.0，ID `1152921505702033238`）2026-10-03 已送出認證**（業主確認後由 AI 按下，通過後立即發佈）：套件業主拖入（截圖換新版後 demo 補了重置券，同版號重新打包再拖一次 → 🔴 Partner Center 擋：「兩個完整名稱為 Fish-Zero.AIUsageMeter_0.1.4.0_X64_ 但內容不同的套件」，草稿裡同版號只能有一個檔案，要先 Remove 舊的並 Save、再上傳新的就過了，不必升版號；0.1.3.0 已移除，⚠️ 套件頁那個 Save 用 ref 點沒生效、用座標點才存進去）；五語「此版本新增功能」、說明三句、功能一條照 `docs/store-listing-0.1.4.md` 改；五語截圖 15 張原位替換成新版（重置券、淺藍名稱、Grok）；「其他測試資訊」加 Grok、「all five services」。每一頁都重新載入核對過。💡 這次清單頁的 textarea／input 沒有 `name`（英文頁第一次載入有），要用索引：0＝說明、1＝新增功能、2～13＝功能、16＝簡短描述。💡 截圖替換：`img[alt=listing-screenshot-image]` 的 data URI 解碼後大小＝本機 PNG 大小，可以拿來確認換成功。⚠️ 送審沒跑 WACK（0.1.3.0 PASS 之後只改 Python 碼）；套件身分的 Grok 實測也沒做（要先移除業主帳號的 Store 版）。
 
+### 0.1.5（開發中，2026-10-03 起）：釘選到桌面
+
+- 使用者回饋「能不能像桌面小工具一樣常駐」。業主 2026-10-03 定的三點：**浮在最上層**（不做貼在桌面層，Win+D／WorkerW 不穩）、**不因為釘著就一直查雲端**、**第一版用完整卡片**（不另做精簡版）。
+- 入口：hover 卡片頁尾「釘選…」選「卡片」（第一版是直接「釘選到桌面」，同日加了長條後改成選單）→ 在**同一個位置**留下 `Card(pinned=True)`（`TrayApp.desk`），hover 卡片收起來。取消：hover 卡片頁尾（釘著時變「取消釘選」）、桌面卡片的頁尾（滑鼠移進來才出現，位置保留、卡片不會變高）或右鍵（立即刷新／設定…／取消釘選，用同一個原生選單 `tray.show_menu`）。**系統匣右鍵選單沒加項目**（業主要求保持乾淨）。
+- 桌面卡片：左鍵拖曳（自己算位移，沒用 `startSystemMove`）、放開才存 `config.json` 的 `desk`（`config.Desk`：`pinned`／`x`／`y`，Qt 邏輯像素）；下次啟動照樣釘回去。拖出界、螢幕拔掉（`screenRemoved` 後 1 秒）、內容變高 → `placement.keep_on_screen` 拉進重疊最多的那個螢幕，跟哪個都不重疊就放主螢幕右下角。
+- 查詢：照背景規則（本機紀錄＋活動偵測），**滑鼠移進桌面卡片＝打開卡片**（`_refresh_on_view`，各家最短間隔照舊）；啟動、釘選本身不查雲端。還沒資料也沒在查的服務顯示「滑鼠移到這裡就會更新」（`card.hover_to_load`，`Poller.busy`），不寫「讀取中」。
+- 全螢幕：每 2 秒 `win32tray.fullscreen_app_on`（`SHQueryUserNotificationState`；`QUNS_BUSY` 時再比前景視窗跟卡片是不是同一個螢幕，D3D 獨佔全螢幕、簡報模式一律算）→ 藏起來，結束後回原位；`pinned` 不變。
+- 驗證（第一版）：真 Windows 平台截圖（繁中／英／德）、視窗樣式＝topmost＋toolwindow＋noactivate、頁尾連結點得到。業主 23:34 實機用 venv 版釘選過，log 有「全螢幕程式在前景，先藏起桌面卡片」（全螢幕偵測實機觸發過）。
+- **同日業主追加兩件**：
+  - 桌面卡片**左下角一直顯示「↻ 立即刷新」**（`Card.refresh_clicked` → `refresh_all`，不管最短間隔），有服務在查時變灰字「更新中…」（`TrayApp._update_busy`，看 `Poller.busy`）。hover 卡片沒有（打開就會查）。
+  - **第二種釘選樣子：工作列長條**（`strip.py`）。業主在三案中選「緊貼工作列上方」（另兩案：疊在工作列上——點工作列會被蓋、要一直搶最上層；嵌進 Explorer 工作列（TrafficMonitor 那種）——我們卡住工作列也卡、Windows 更新常弄壞）。橫的一排：`↻  Claude 5h [62] 週 [81]  Codex …`，每個視窗一顆**手機電量樣式的小電池、數字塞在裡面**（`strip.Battery`：填色照 `icon.level_for`、過期變灰；數字壓在填色上與壓在空白上用不同顏色，`text_on` 依亮度選黑／白字）。沒資料「—」、失敗「!」、只有無上限「∞」。**滑過、點一下都不開完整卡片**（第一版有「停 0.5 秒或點一下就開」，業主試用嫌滑過去就跳 → 同日拿掉；細節看系統匣圖示的 hover 卡片），所以長條也不會因為被滑過而查雲端，只靠背景規則、活動偵測、最左邊的 ↻。只能左右拖，存右緣（`Desk.strip_right`，內容變長往左長），`placement.dock_strip`：貼工作列上緣（工作列在上面就貼下緣；左右兩側或自動隱藏 → 可用區域底部），水平中心在哪個螢幕就貼哪個（可以拖到別的螢幕），預設主螢幕靠右。工作列移動、解析度變了沒有通知 → 跟全螢幕檢查同一個 2 秒計時器順便重新貼齊。
+  - 選樣子：hover 卡片頁尾右邊改成「釘選…」→ 原生選單「卡片（放在桌面上）／長條（貼在工作列上方）」；釘著的那個右鍵選單多這兩項（目前那種打勾），可以直接換。兩種位置分開記（`Desk.x/y` 與 `strip_right`），`Desk.style`。
+- 驗證（追加後）：`tests/test_desk.py` 29 條；unittest 251 過。真 Windows 平台截圖看過長條（繁中／英、5 家全開約 630px 寬）與卡片頁尾。⚠️ **長條還沒有真人實機試過**（拖、停一下開卡片、跨螢幕、工作列在上方／自動隱藏都只有單元測試）；Win+D、多螢幕拔插也還沒看過。
+- **同日（10-04）Antigravity**：業主問為何常逾時、官方有沒有次數限制 → 背景代理查 log（結論見 §3 Antigravity：卡在 agy 啟動時的後端請求、沒有官方限制）。業主選「照 Claude 的做法」＋把 CLI 的修法一起做：狀態列擷取 `agy_hook.py`、設定視窗 Antigravity 列的安裝／移除按鈕（`settings.HOOKS`，按鈕 objectName `agyHookButton`）、CLI 逾時重試等。`tests/test_agy.py` 21 條（含照 agy 的方式經 cmd.exe 真的跑 PowerShell hook，路徑有空白與 `&` 也跑）；unittest 273 過。
+- 業主 2026-10-04 實測：設定按「安裝擷取」→ 重開 agy → `usage-cache.json` 隨 agy 狀態即時更新（只有 `fetchedAt`、`quota`）、tray 背景讀快取不啟動 agy、hook 的 PowerShell 幾秒內都結束。
+- **發版準備（2026-10-04，業主：「開始處理 MSIX 包版、隱私權更新」）**：版號 0.1.5；商店文案 `docs/store-listing-0.1.5.md`（五語新增功能、說明加一段＋換一句、功能第 13 條）；`store-listing.md` §5 runFullTrust（第 2、4 條加 agy）、§6 認證注意事項（加釘選）、§8；`store_shots.py` 五語各 4 張（第 4 張＝釘選，工作列是畫的示意）。隱私權政策（fish-zero-web）補 Antigravity 擷取與釘選——⚠️ 送審前要先上線。
+- 順帶發現（沒處理）：Claude 擷取串接業主原本的 Node 狀態列（`statusline-usage.js`）時會留下沒結束的行程（2026-10-04 看到 1 個 PowerShell 從前一天 12:18 掛著、7 個 node 從前一天 11:42 起累積，CPU 0）。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 > ⏸️ **2026-09-27 的狀態**：0.1.1.0（Submission 2）已上架。0.1.2.0 的 **Submission 3** 在 Partner Center 已全部填好：套件 `AiUsageMeter-0.1.2.0-x64.msix` Validated、五語清單都 Complete（各 3 張截圖＋300×300 標誌；英文與繁中的第 3 張換成新版設定畫面）、「其他測試資訊」的認證注意事項改成五語版。只差業主按「提交以進行認證」。💡 Partner Center 清單頁的截圖本身就是「更新圖片」按鈕、旁邊有自己的 file input，替換單張可以原位上傳、不用刪掉重排。下一版：xAI（Grok）看回信。
@@ -184,7 +202,10 @@ class ProviderState:
 - 舊做法（0.1.3 以前，2026-10-03 移除）：讀 `~/.grok/auth.json` 的 access token、過期就跑 `grok models` 讓 CLI 續期、直接打 `cli-chat-proxy.grok.com/v1/billing`；`net.py` 一起刪了。細節見 `D:\FISH\git\.ai\log\2026-10.md`。
 
 ### Google Antigravity CLI（`agy`）
-- 透過 agy CLI 原生非互動指令查詢額度：`agy -p "/usage" --output-format json`（非互動 print 模式會自動展開 slash commands，且 `total_tokens: 0` 不消耗任何模型 token）。
+- **2026-10-04 起首選：狀態列擷取**（`agy_hook.py`，跟 Claude 同一套做法，業主選的）。設定視窗 Antigravity 那一列「安裝擷取」→ 改 `~/.gemini/antigravity-cli/settings.json` 的 `statusLine`（先備份 `.ai-quota-tray.bak`），hook 是 `~/.gemini/antigravity-cli/ai-quota-tray/statusline.ps1`，把 stdin 的 `quota` 存成同資料夾的 `usage-cache.json`（`{"fetchedAt": ms, "quota": {...}}`，只存這兩樣、不存 email）。背景每 2 分鐘讀它（`BACKGROUND_LOCAL`）；`fetch` 時快取 5 分鐘內就不跑 CLI（`CACHE_FRESH_FOR`）。
+  - 實測（業主電腦 agy 1.2.16，2026-10-04，暫時改設定再逐位元還原）：`quota` 只有 `gemini-weekly`、`3p-weekly` 兩個鍵（3p＝Claude／GPT），各有 `remaining_fraction`／`reset_time`／`reset_in_seconds`；登入中（`authenticating`）是 `null` → 不存。⚠️ **agy 經 `cmd.exe` 執行指令，而且自己用空白切參數、不理會引號**（`"two words"` 到手是 `"two`、`words"`）→ 路徑只有安全字元就 `-File 路徑`，否則 `-EncodedCommand`（Base64）。會同時開好幾個（啟動 2 秒內 7 次）、慢的不會被砍 → 各自暫存檔再換名。**已經開著的 agy 不會重讀設定**，裝好要重開 agy。PowerShell 5.1 在 de-DE 下 `ConvertTo-Json` 小數點照樣是「.」。
+  - 沒有自訂狀態列：設 `stack_with_default: true`、hook 不印任何東西 → agy 內建狀態列照常。有自訂的：照 agy 的規則（空白切、`cmd.exe /d /c`）再跑原本的指令並印出輸出；原本 `enabled: false` 的不幫它打開。
+- 備援：透過 agy CLI 原生非互動指令查詢額度：`agy -p "/usage" --output-format json`（非互動 print 模式會自動展開 slash commands，且 `total_tokens: 0` 不消耗任何模型 token）。2026-10-03 調查（agy log 171 次 /usage）：中位數 4.2 秒、約 4% 卡超過 30 秒，全部卡在啟動時 `loadCodeAssist` 之後的後端請求；沒有任何 429，**官方沒有寫 /usage 的次數限制**。所以：每次 25 秒、逾時重開一支再試一次（`ATTEMPTS`）、逾時當下先解析已印出的 stdout、啟動前錯開 3 秒（官方 issue #573：跟其他 AI CLI 同時跑會卡，推測）、`stdin=DEVNULL`（#508）、`cwd` 固定 `config.data_dir()`（Store 版原本從 System32 起跑）。兩次都逾時 → `detail.timeout`，卡片灰字「查詢逾時，稍後會再試」（`card.is_failure` 不算紅字錯誤，`carry_over` 會帶過去）。CLI 失敗但有擷取快取 → 回快取＋`api_error`。活動偵測對 Antigravity 改 60 秒一次（`activity.ACTIVE_INTERVAL_BY_NAME`，有擷取時讀快取很便宜）。兩個來源的標籤都是 `Gemini`、`Claude/GPT`（非每週視窗接視窗名）。
 - 不碰 Windows 認證管理員中的 OAuth Token，完全由 `agy` 處理身分驗證與快取，解決了之前打內部 Cloud Code PA API 回傳 403 Forbidden 的問題。
 - 回傳結構包含 `command.data.groups`：
   - `Gemini Models`（Gemini Flash/Pro 共用額度池）

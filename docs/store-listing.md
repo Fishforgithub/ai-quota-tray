@@ -203,9 +203,9 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 > AI Usage Meter is a Win32 desktop app (Python with Qt, packaged with PyInstaller) that lives in the Windows notification area. It needs full trust for the following:
 >
 > 1. Notification area icon and hover card: it registers its icon with Shell_NotifyIconW (NOTIFYICON_VERSION_4) to receive hover events, uses Shell_NotifyIconGetRect to place its card next to the icon, TrackPopupMenu for the right-click menu, and balloon notifications (NIF_INFO) for low-usage alerts.
-> 2. Reading usage records that other developer tools keep in the user's profile, outside the package: %USERPROFILE%\.claude\usage-cache.json and %USERPROFILE%\.codex\sessions\. Only the usage-limit fields are used. To tell which tool is in use, it also checks only the last-modified time, never the contents, of those tools' session files (%USERPROFILE%\.claude\projects\, %USERPROFILE%\.gemini\antigravity-cli\brain\, and VS Code's Copilot Chat sessions under %APPDATA%\Code\User\).
+> 2. Reading usage records that other developer tools keep in the user's profile, outside the package: %USERPROFILE%\.claude\usage-cache.json, %USERPROFILE%\.codex\sessions\, and (only if the user installed the Antigravity capture, see 4) %USERPROFILE%\.gemini\antigravity-cli\ai-quota-tray\usage-cache.json. Only the usage-limit fields are used. To tell which tool is in use, it also checks only the last-modified time, never the contents, of those tools' session files (%USERPROFILE%\.claude\projects\, %USERPROFILE%\.gemini\antigravity-cli\brain\, and VS Code's Copilot Chat sessions under %APPDATA%\Code\User\).
 > 3. Starting official command-line tools that the user installed and signed in to, as child processes: Codex CLI ("codex app-server", over stdin/stdout), Antigravity CLI ("agy -p /usage"), the GitHub Copilot SDK runtime, and Grok Build CLI ("grok agent stdio", its official Agent Client Protocol interface, over stdin/stdout; started only for one usage lookup and closed right after). These tools handle sign-in themselves; the app never reads their credentials or tokens. The app makes sure the processes it started exit: it closes their input first, and uses taskkill /T only if they are still running after 2 seconds.
-> 4. Optional, only after the user presses "Install" and confirms: pointing Claude Code's status line setting (%USERPROFILE%\.claude\settings.json, backed up first) to a small script in %USERPROFILE%\.claude\ai-quota-tray\ that saves the usage fields. "Remove" restores the original setting.
+> 4. Optional, only after the user presses "Install capture" and confirms: pointing Claude Code's status line setting (%USERPROFILE%\.claude\settings.json) or Antigravity CLI's (%USERPROFILE%\.gemini\antigravity-cli\settings.json), each backed up first, to a small PowerShell script in an ai-quota-tray folder next to it that saves only the usage fields. The tool's own status line keeps showing. "Remove capture" restores the original setting.
 > 5. When the user turns on GitHub Copilot, the official Copilot SDK downloads its runtime from GitHub into %LOCALAPPDATA%\github-copilot-sdk.
 > 6. It animates its notification area icon by swapping pre-rendered frames (NIM_MODIFY), and registers for session lock (WTSRegisterSessionNotification) and display power (RegisterPowerSettingNotification) notifications so the animation pauses when the screen is locked or off. It also asks the Microsoft Store whether an update is available (StoreContext.GetAppAndOptionalStorePackageUpdatesAsync) and, only if the user clicks, opens the Store product page.
 >
@@ -215,15 +215,15 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 
 > AI Usage Meter 是住在 Windows 系統匣的 Win32 桌面程式（Python＋Qt，用 PyInstaller 打包），以下幾件事需要完全信任權限：
 > 1. 系統匣圖示與懸停卡片：`Shell_NotifyIconW`（VERSION_4）收 hover 事件、`Shell_NotifyIconGetRect` 把卡片放在圖示旁、`TrackPopupMenu` 右鍵選單、`NIF_INFO` 低額度通知。
-> 2. 讀取其他開發工具放在使用者資料夾（套件外）的用量紀錄：`.claude\usage-cache.json`、`.codex\sessions\`，只用額度欄位。為了判斷正在用哪個工具，另外只看這些工具對話紀錄檔（`.claude\projects\`、`.gemini\antigravity-cli\brain\`、VS Code Copilot Chat 的 `chatSessions`）的修改時間，不讀內容。
+> 2. 讀取其他開發工具放在使用者資料夾（套件外）的用量紀錄：`.claude\usage-cache.json`、`.codex\sessions\`、（有裝 Antigravity 擷取時）`.gemini\antigravity-cli\ai-quota-tray\usage-cache.json`，只用額度欄位。為了判斷正在用哪個工具，另外只看這些工具對話紀錄檔（`.claude\projects\`、`.gemini\antigravity-cli\brain\`、VS Code Copilot Chat 的 `chatSessions`）的修改時間，不讀內容。
 > 3. 以子程序啟動使用者自己安裝、登入的官方 CLI：`codex app-server`（stdin/stdout）、`agy -p /usage`、Copilot SDK runtime、`grok agent stdio`（Grok Build CLI 官方的 ACP 介面，stdin/stdout；每次查詢才起、查完就關）。登入由它們自己處理，本 App 不讀它們的憑證或權杖；先關掉輸入讓它們自己結束，2 秒後還在才用 `taskkill /T` 結束自己啟動的程序樹。
-> 4. 選用，使用者按「安裝」並確認後才做：把 Claude Code 的狀態列設定（先備份）指向 `.claude\ai-quota-tray\` 裡的小程式，只存額度欄位；按「移除」還原。
+> 4. 選用，使用者按「安裝擷取」並確認後才做：把 Claude Code 或 Antigravity CLI 的狀態列設定（各自先備份）指向旁邊 `ai-quota-tray` 資料夾裡的 PowerShell 小程式，只存額度欄位，工具自己的狀態列照常顯示；按「移除擷取」還原。
 > 5. 使用者啟用 Copilot 時，官方 SDK 會從 GitHub 下載 runtime 到 `%LOCALAPPDATA%\github-copilot-sdk`。
 > 6. 系統匣圖示動畫：預先算好的畫格用 `NIM_MODIFY` 換圖；註冊鎖定畫面（`WTSRegisterSessionNotification`）與螢幕電源（`RegisterPowerSettingNotification`）通知，鎖定或螢幕關閉時停轉。另外向 Microsoft Store 查詢有沒有更新（`StoreContext`），使用者點了才開 Store 商品頁。
 >
 > 以目前使用者身分執行（asInvoker）、不要求系統管理員；不裝驅動或服務、不注入或修改其他程序、不讀密碼／權杖／認證存放區、沒有自己的伺服器、不傳資料給開發者。開機啟動走 `windows.startupTask`。
 
-**對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`kill_tree`）、`providers/antigravity.py`、`providers/copilot.py`、`providers/grok.py`（`agent_command`、`_Agent.__exit__`） ④`claude_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
+**對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`kill_tree`）、`providers/antigravity.py`、`providers/copilot.py`、`providers/grok.py`（`agent_command`、`_Agent.__exit__`） ④`claude_hook.py`、`agy_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
 
 ## 6. 給審核人員的認證注意事項
 
@@ -245,7 +245,7 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 >
 > In demo mode the app makes no queries and starts no other tools. No sign-in or account is needed, and there are no in-app purchases.
 >
-> Other things to try: the right-click menu also has "Refresh now", "Start with Windows", and "Quit". The Settings window offers Traditional Chinese, English, Japanese, German, and Simplified Chinese, and links to the privacy policy and website. The ring around the tray icon slowly rotates; it pauses when the screen is locked or off, in battery saver, or when Windows animation effects are off.
+> Other things to try: at the bottom right of the card, "Pin…" keeps the card on the desktop ("Card (on the desktop)") or turns it into a strip of small batteries above the taskbar ("Strip (above the taskbar)"); right-click the pinned card or strip to switch or "Unpin". The right-click menu of the tray icon also has "Refresh now", "Start with Windows", and "Quit". The Settings window offers Traditional Chinese, English, Japanese, German, and Simplified Chinese, and links to the privacy policy and website. The ring around the tray icon slowly rotates; it pauses when the screen is locked or off, in battery saver, or when Windows animation effects are off.
 
 **中文對照（給業主核對，不用貼）**
 
@@ -258,9 +258,9 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 >
 > 示範模式下不查詢任何服務、不啟動其他工具。不需要登入或帳號，也沒有內購。
 >
-> 其他可以試的：右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換繁中、英文、日文、德文、簡中五種介面，也有隱私權政策與官網連結。系統匣圖示的外圈會慢慢旋轉，鎖定畫面、螢幕關閉、省電模式或 Windows 關掉動畫效果時會停下。
+> 其他可以試的：卡片右下角的「釘選…」可以把卡片留在桌面（「卡片（放在桌面上）」）或變成工作列上方的小電池長條（「長條（貼在工作列上方）」），在釘著的卡片或長條上按右鍵可以切換或「取消釘選」。系統匣圖示的右鍵選單還有「立即刷新」「開機時啟動」「關閉」；設定視窗可以切換繁中、英文、日文、德文、簡中五種介面，也有隱私權政策與官網連結。系統匣圖示的外圈會慢慢旋轉，鎖定畫面、螢幕關閉、省電模式或 Windows 關掉動畫效果時會停下。
 
-⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字時，這段要一起改。
+⚠️ 改到右鍵選單、設定視窗的按鈕文字、示範模式的行為或提示字、釘選的選單文字時，這段要一起改。
 
 ## 7. 年齡分級（IARC 問卷）
 
@@ -294,10 +294,11 @@ Partner Center 的「年齡分級」是線上問卷，答完當場產生各地�
 |---|---|---|
 | `docs/store/shots/zh-TW-1.png`／`en-1.png` | 深色卡片（四家範例資料）＋「每個額度還剩多少，滑鼠移過去就知道」 | 各自語言的清單，放第一張 |
 | `docs/store/shots/zh-TW-2.png`／`en-2.png` | 淺色卡片＋「淺色、深色都好讀」 | 同上 |
-| `docs/store/shots/zh-TW-3.png`／`en-3.png` | 設定視窗（Claude 那列顯示「安裝」）＋「選你用的工具，不用登入、不碰權杖」 | 同上 |
+| `docs/store/shots/zh-TW-3.png`／`en-3.png` | 設定視窗（Claude、Antigravity 那兩列顯示「安裝擷取」）＋「選你用的工具，不用登入、不碰權杖」 | 同上 |
+| `docs/store/shots/zh-TW-4.png`／`en-4.png` | 0.1.5 起：釘在桌面的卡片＋工作列上方的小電池長條（底下的工作列是畫的示意）＋「釘在桌面或貼在工作列上方」 | 同上 |
 
 做法：直接用 Qt 畫真的 `Card`／`SettingsDialog` 元件（2 倍解析度），放在漸層背景上加一句說明；**不截桌面**（會拍到業主的視窗與系統匣裡別的 App）。
-資料是示範模式的範例（`demo.sample_states`），但不畫示範模式那行紅字。設定視窗那張強制畫成「還沒安裝 Claude 狀態列擷取」的樣子（新使用者看到的）。
+資料是示範模式的範例（`demo.sample_states`），但不畫示範模式那行紅字。設定視窗那張強制畫成「還沒安裝 Claude／Antigravity 狀態列擷取」的樣子（新使用者看到的）。五語各 4 張（ja、de、zh-CN 同樣命名）。
 改到卡片或設定視窗的外觀後，重跑 `.venv\Scripts\python packaging\store_shots.py` 即可（輸出會覆蓋）。
 
 **Store 標誌**（選填）：`docs/store/logo-300.png`（300×300，由 `ai_quota_tray/assets/app.png` 縮小）。不傳的話 Store 用套件裡的圖示。
