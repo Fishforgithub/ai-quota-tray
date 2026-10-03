@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -99,6 +100,41 @@ class InstallTest(HookTestBase):
                                             "command": '"node" "D:/x/statusline-usage.js"'}})
         self.assertEqual(h.status(), h.LEGACY)
 
+    def test_legacy_node_original_is_not_chained(self):
+        # 業主自己的 Node 版做的事（寫同一個快取、印同格式的一行）hook 都做了，轉交只會多留卡住的 node
+        legacy = {"type": "command", "command": '"node" "D:/x/statusline-usage.js"'}
+        self.write_settings({"statusLine": legacy})
+        h.install()
+        self.assertFalse((h.hook_dir() / "original.sh").exists())
+        self.assertFalse((h.hook_dir() / "original.ps1").exists())
+        h.uninstall()
+        self.assertEqual(self.settings()["statusLine"], legacy, "移除時照樣還原")
+
+    def test_refresh_upgrades_old_script_only_when_installed(self):
+        self.assertFalse(h.refresh(), "沒裝 Claude Code：什麼都不做")
+        legacy = {"type": "command", "command": '"node" "D:/x/statusline-usage.js"'}
+        self.write_settings({"statusLine": legacy})
+        self.assertFalse(h.refresh(), "沒裝擷取：什麼都不做")
+        h.install()
+        # 模擬 0.1.4 以前裝的：v1 腳本，而且轉交給 Node 版
+        h.hook_path().write_text("# ai-quota-tray statusline hook v1\n", encoding="utf-8-sig")
+        (h.hook_dir() / "original.sh").write_text('"node" "D:/x/statusline-usage.js"\n', encoding="utf-8")
+        (h.hook_dir() / "original.ps1").write_text("x", encoding="utf-8")
+        before = h.settings_path().read_bytes()
+        self.assertTrue(h.refresh())
+        self.assertEqual(h.script_version(h.hook_path()), h.HOOK_VERSION)
+        self.assertFalse((h.hook_dir() / "original.sh").exists())
+        self.assertFalse((h.hook_dir() / "original.ps1").exists())
+        self.assertEqual(h.settings_path().read_bytes(), before, "不碰 Claude Code 的設定檔")
+        self.assertFalse(h.refresh(), "已經是新版")
+
+    def test_refresh_keeps_chain_for_other_custom_statuslines(self):
+        self.write_settings({"statusLine": {"type": "command", "command": "echo mine"}})
+        h.install()
+        h.hook_path().write_text("# ai-quota-tray statusline hook v1\n", encoding="utf-8-sig")
+        self.assertTrue(h.refresh())
+        self.assertTrue((h.hook_dir() / "original.sh").exists())
+
     def test_unreadable_settings_are_never_touched(self):
         self.claude.mkdir(parents=True)
         h.settings_path().write_text("{ // comment\n", encoding="utf-8")
@@ -142,6 +178,45 @@ class RunHookTest(HookTestBase):
         h.install()
         self.assertIn("原本｜Opus", self.run_hook())
         self.assertIn("rate_limits", self.cache())
+
+    def test_hung_original_is_ended_with_its_children(self):
+        """原本的狀態列卡住：時限到就連同子行程一起結束，hook 自己也結束（2026-10-04 累積過 7 個 node）。"""
+        marker = f"aiqt-hang-{os.getpid()}"
+        script = self.root / "hang.py"
+        script.write_text(f"import time  # {marker}\ntime.sleep(120)\n", encoding="utf-8")
+        self.write_settings({"statusLine": {"type": "command", "command": f'"{sys.executable}" "{script}"'}})
+        h.install()
+        start = time.monotonic()
+        self.run_hook()
+        self.assertLess(time.monotonic() - start, h.ORIGINAL_TIMEOUT_MS / 1000 + 20)
+        self.assertIn("rate_limits", self.cache(), "快取照樣先寫好")
+        time.sleep(1)
+        self.assertFalse(processes_with(marker), "卡住的原本狀態列要被收掉")
+
+    def test_stdin_that_never_ends_does_not_hang(self):
+        """呼叫端被取消、輸入一直沒結束：hook 等 STDIN_TIMEOUT_MS 就自己結束，不寫快取。"""
+        self.write_settings({})
+        h.install()
+        proc = subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(h.hook_path())],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.addCleanup(proc.stdin.close)
+        proc.stdin.write(b'{"rate_limits":')
+        proc.stdin.flush()
+        try:
+            proc.wait(timeout=h.STDIN_TIMEOUT_MS / 1000 + 20)
+        finally:
+            proc.kill()
+            proc.stdout.close()
+        self.assertEqual(proc.returncode, 0)
+        self.assertFalse((self.root / "cache.json").exists())
+
+
+def processes_with(marker: str) -> list[str]:
+    out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                          "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    return [line for line in out.splitlines() if marker in line and "Get-CimInstance" not in line]
 
 
 if __name__ == "__main__":

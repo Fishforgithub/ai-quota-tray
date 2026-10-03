@@ -106,6 +106,17 @@ class HookInstallTest(FakeAgyHome):
         agy_hook.uninstall()
         self.assertEqual(self.settings()["statusLine"]["command"], "mine.exe")
 
+    def test_refresh_replaces_old_script_only(self):
+        self.assertFalse(agy_hook.refresh(), "沒裝擷取：什麼都不做")
+        self.write_settings({})
+        agy_hook.install()
+        agy_hook.hook_path().write_text("# ai-quota-tray agy statusline hook v1\n", encoding="utf-8-sig")
+        before = agy_hook.settings_path().read_bytes()
+        self.assertTrue(agy_hook.refresh())
+        self.assertIn("Read-Stdin", agy_hook.hook_path().read_text(encoding="utf-8-sig"))
+        self.assertEqual(agy_hook.settings_path().read_bytes(), before, "不碰 agy 的設定檔")
+        self.assertFalse(agy_hook.refresh(), "已經是新版")
+
 
 class UnsafePathTest(FakeAgyHome):
     subdir = "user name & co"  # 家目錄有空白、cmd 的特殊字元
@@ -154,12 +165,28 @@ class HookScriptRunTest(FakeAgyHome):
         self.assertFalse(out.startswith("\ufeff"), "轉手給原本指令的 stdin 不能多 BOM")
         self.assertTrue(agy_hook.cache_path().exists())
 
+    def test_hung_custom_line_is_ended(self):
+        marker = f"aiqt-agy-hang-{os.getpid()}"
+        script = self.dir / "hang.py"
+        script.write_text(f"import time  # {marker}\ntime.sleep(120)\n", encoding="utf-8")
+        self.write_settings({"statusLine": {"type": "command", "command": f"{sys.executable} {script.as_posix()}"}})
+        agy_hook.install()
+        start = time.monotonic()
+        self.assertEqual(self.run_hook(PAYLOAD), "")
+        self.assertLess(time.monotonic() - start, agy_hook.ORIGINAL_TIMEOUT_MS / 1000 + 20)
+        time.sleep(1)
+        from test_claude_hook import processes_with
+        self.assertFalse(processes_with(marker), "卡住的原本狀態列要被收掉")
+
 
 class UnsafePathRunTest(HookScriptRunTest):
     subdir = "user name & co"
 
     def test_custom_line_gets_stdin_and_its_output_is_shown(self):
         pass  # 只看路徑有空白時的 -EncodedCommand 能不能跑起來
+
+    def test_hung_custom_line_is_ended(self):
+        pass  # 同上
 
 
 class CacheParseTest(unittest.TestCase):

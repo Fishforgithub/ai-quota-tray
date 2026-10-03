@@ -48,7 +48,8 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication
 
-from . import activity, config, demo, i18n, icon, icon_anim, startup, store_update, win32tray
+from . import (activity, agy_hook, claude_hook, config, demo, i18n, icon, icon_anim, startup,
+               store_update, win32tray)
 from .alerts import AlertStore
 from .i18n import tr
 from .card import Card
@@ -714,6 +715,17 @@ class TrayApp(QObject):
         self.tray.close()
 
 
+def refresh_hooks() -> None:
+    """已安裝的狀態列擷取若是舊版腳本，換成這一版（例如 0.1.5 起讀輸入、跑原本的狀態列都有上限）。
+    使用者當初按過「安裝擷取」才會有；只動我們自己 hook 資料夾裡的檔案。在 run() 叫，測試不會碰到真的檔案。"""
+    for hook in (claude_hook, agy_hook):
+        try:
+            if hook.refresh():
+                log.info("已更新狀態列擷取腳本：%s", hook.hook_path())
+        except OSError as exc:
+            log.warning("更新狀態列擷取腳本失敗：%s", exc)
+
+
 def run() -> int:
     """Start the tray with saved service and language settings."""
     mutex = win32tray.acquire_single_instance(MUTEX_NAME)
@@ -729,6 +741,7 @@ def run() -> int:
     demo_mode = config.load_demo()
     advanced = config.load_advanced()
     desk = config.load_desk()
+    refresh_hooks()
 
     if not startup.is_packaged():
         # 工作列用我們的圖示，不歸到 pythonw.exe。MSIX 版的 ID 由套件決定，自己設反而會對不上

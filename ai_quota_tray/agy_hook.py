@@ -20,6 +20,8 @@ HOOK_DIR/usage-cache.json（providers/antigravity.py 先讀它），使用者原
 - 沒有原本的狀態列：設 stack_with_default=true、我們什麼都不印 → agy 內建的狀態列照常顯示。
   原本有自訂狀態列：照 agy 的規則（空白切開、經 cmd.exe）再跑一次原本的指令，把它的輸出印出來。
 - hook 檔放 ~/.gemini/antigravity-cli/ai-quota-tray/（理由同 claude_hook：MSIX 解除安裝不能跑清理程式）。
+- v2：讀 stdin、跑原本的狀態列都有上限（跟 Claude 共用 claude_hook.PS_HELPERS；Claude 那邊實際累積過卡住的行程）。
+  已安裝的舊版腳本由 refresh() 在 App 啟動時換新。
 """
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ import re
 import shutil
 from pathlib import Path
 
-HOOK_VERSION = 1
+from .claude_hook import ORIGINAL_TIMEOUT_MS, PS_HELPERS, STDIN_TIMEOUT_MS, script_version
+
+HOOK_VERSION = 2
 NOT_INSTALLED, INSTALLED, NO_AGY, UNREADABLE = "not_installed", "installed", "no_agy", "unreadable"
 BACKUP_SUFFIX = ".ai-quota-tray.bak"
 SAFE_PATH = re.compile(r"[A-Za-z0-9_.:/\-]+")  # 不會被 agy 的空白切割或 cmd.exe 誤解的路徑
@@ -42,11 +46,10 @@ HOOK_SCRIPT = r'''# ai-quota-tray agy statusline hook v{version}
 # 移除：AI Usage Meter 右鍵 → 設定… → Antigravity 那一列的「移除擷取」（會還原原本的狀態列設定）。
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference = 'SilentlyContinue'
-$utf8 = New-Object System.Text.UTF8Encoding $false
-[Console]::InputEncoding = $utf8
+{helpers}
 [Console]::OutputEncoding = $utf8
-$OutputEncoding = $utf8
-$raw = [Console]::In.ReadToEnd().TrimStart([char]0xFEFF)
+$raw = Read-Stdin {stdin_ms}
+if ($raw -eq $null) {{ exit 0 }}  # 等不到輸入結束：這一輪已經被取消了，不要留著等
 $data = $null
 try {{ $data = $raw | ConvertFrom-Json }} catch {{ }}
 
@@ -67,11 +70,15 @@ $orig = Join-Path $PSScriptRoot 'original-command.txt'
 if (Test-Path -LiteralPath $orig) {{
     $parts = @(([System.IO.File]::ReadAllText($orig, $utf8)).Trim() -split '\s+' | Where-Object {{ $_ }})
     if ($parts.Count -gt 0) {{
-        $out = $raw | & cmd.exe /d /c @parts
-        [Console]::Out.Write(($out -join "`n"))
+        [Console]::Out.Write((Invoke-Original 'cmd.exe' ('/d /c ' + ($parts -join ' ')) $raw {original_ms}))
     }}
 }}
 '''
+
+
+def hook_script() -> str:
+    return HOOK_SCRIPT.format(version=HOOK_VERSION, helpers=PS_HELPERS, stdin_ms=STDIN_TIMEOUT_MS,
+                              original_ms=ORIGINAL_TIMEOUT_MS)
 
 
 def agy_dir() -> Path:
@@ -172,7 +179,7 @@ def install() -> None:
     settings = _read_settings()  # 讀不懂就在這裡丟 HookError，什麼都不動
     current = settings.get("statusLine")
     hook_dir().mkdir(parents=True, exist_ok=True)
-    hook_path().write_text(HOOK_SCRIPT.format(version=HOOK_VERSION), encoding="utf-8-sig")
+    hook_path().write_text(hook_script(), encoding="utf-8-sig")
     if is_ours(_command_of(settings)):
         return
     _write_json(original_path(), {"statusLine": current})
@@ -192,6 +199,14 @@ def install() -> None:
         settings["statusLine"] = {"type": "command", "command": hook_command(),
                                   "enabled": True, "stack_with_default": True}
     _write_json(settings_path(), settings)
+
+
+def refresh() -> bool:
+    """App 啟動時叫：已安裝但腳本比這一版舊 → 換新（只動 hook 資料夾，不碰 agy 的設定檔）。回傳有沒有換。"""
+    if status() != INSTALLED or script_version(hook_path()) >= HOOK_VERSION:
+        return False
+    hook_path().write_text(hook_script(), encoding="utf-8-sig")
+    return True
 
 
 def uninstall() -> None:

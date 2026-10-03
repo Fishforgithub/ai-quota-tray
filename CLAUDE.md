@@ -127,7 +127,11 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 業主 2026-10-04 實測：設定按「安裝擷取」→ 重開 agy → `usage-cache.json` 隨 agy 狀態即時更新（只有 `fetchedAt`、`quota`）、tray 背景讀快取不啟動 agy、hook 的 PowerShell 幾秒內都結束。
 - **發版準備（2026-10-04，業主：「開始處理 MSIX 包版、隱私權更新」）**：版號 0.1.5；商店文案 `docs/store-listing-0.1.5.md`（五語新增功能、說明加一段＋換一句、功能第 13 條）；`store-listing.md` §5 runFullTrust（第 2、4 條加 agy）、§6 認證注意事項（加釘選）、§8；`store_shots.py` 五語各 4 張（第 4 張＝釘選，工作列是畫的示意）。隱私權政策（fish-zero-web）補 Antigravity 擷取與釘選——⚠️ 送審前要先上線。
 - ✅ commit `8f8f632`（功能）、`9e99362`（版號＋文案＋截圖），**未 push**。`pack_msix.py` 產出 `build\msix\AiUsageMeter-0.1.5.0-x64.msix`（48.7 MB，Identity `Fish-Zero.AIUsageMeter`）；打包版 exe 版本資訊 0.1.5.0、`probe` 抓得到 Antigravity／Claude、PYZ 裡有 `strip`／`agy_hook`。⚠️ **沒跑 WACK**（最後一次 PASS 是 0.1.3.0；要先移除業主帳號的 Store 版）、**沒做 loose registration 實測**。隱私權政策與產品頁 fish-zero-web `efbb948`（site verify 277 過），**未 push＝還沒上線**。
-- 順帶發現（沒處理）：Claude 擷取串接業主原本的 Node 狀態列（`statusline-usage.js`）時會留下沒結束的行程（2026-10-04 看到 1 個 PowerShell 從前一天 12:18 掛著、7 個 node 從前一天 11:42 起累積，CPU 0）。
+- **擷取腳本 v2（同日，業主：「都做」）**：Claude 擷取串接業主原本的 Node 狀態列（`statusline-usage.js`）時留下沒結束的行程（1 個 PowerShell 從前一天 12:18 掛著、7 個 node 從前一天 11:42 起累積，父行程都已結束，各 25～36 MB、CPU 0）。全卡在等 stdin 結束——推測是 Claude Code 取消慢的一輪時只結束它直接啟動的那一層（沒追蹤驗證）。修法：
+  - 兩支 hook 共用 `claude_hook.PS_HELPERS`：`Read-Stdin`（`StreamReader.ReadToEndAsync` 等 3 秒，等不到就 `exit 0`、不寫快取）、`Invoke-Original`（`Process.Start`、自己寫 UTF-8 bytes、5 秒沒結束就 `taskkill /T /F`）。🔴 `Process.Start`（CreateProcess）會**先找 System32 再找 PATH**，`bash` 會變成 WSL 的 `System32\bash.exe` → 先用 `Get-Command` 照 PATH 找完整路徑（測試抓到）。⚠️ `[Console]::In.ReadToEndAsync()` 在 .NET Framework 是同步的（SyncTextReader），要自己包 `OpenStandardInput()`。
+  - 原本的狀態列是業主的 Node 版（`LEGACY_MARKERS`）→ 不再轉交（它做的事 hook 都做了：同一個快取、同格式的一行；fallback 也補了 `model.id`）。
+  - 已安裝的舊腳本：`refresh()` 在 `app.run()` 啟動時換新（看第一行 `hook vN`，只動 hook 資料夾、不碰設定檔）。業主這台 01:02 換成 v2：Claude 快取照樣更新、node 0 個。
+  - 測試：卡住的原本狀態列會被收掉（找 command line 的 marker）、stdin 不結束時 hook 會自己退出、`refresh` 只在已安裝且舊版時動作。unittest 281 過。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
