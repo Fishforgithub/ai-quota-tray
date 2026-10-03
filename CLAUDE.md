@@ -3,7 +3,7 @@
 Windows 系統匣常駐工具（產品名 **AI Usage Meter**，repo／內部 ID 仍叫 ai-quota-tray）：顯示 Claude / Codex / Antigravity CLI / GitHub Copilot 各視窗的剩餘 %、重置倒數（預設只啟用 Claude、Codex）。
 滑鼠 hover 系統匣圖示 → 彈出自訂卡片（非原生 tooltip）。
 
-> 本文件最初來自 2026-09-25 的研究與規劃。現行來源：Claude 本機 statusLine cache、Codex 官方 App Server（失敗退回本機 rollout）、Antigravity 官方 agy CLI、Copilot 官方 SDK。Grok 原本使用未公開端點，現已停用並從介面移除。下文 Grok 與私有端點記錄僅供歷史參考，不代表現行實作。
+> 本文件最初來自 2026-09-25 的研究與規劃。現行來源：Claude 本機 statusLine cache、Codex 官方 App Server（失敗退回本機 rollout）、Antigravity 官方 agy CLI、Copilot 官方 SDK、Grok 官方 Grok Build CLI 的 Agent 模式（`grok agent stdio` → `_x.ai/billing`，2026-10-03 起，Store 版也有）。下文提到 Grok「讀 auth.json、打 cli-chat-proxy 端點」的段落是 0.1.3 以前的做法，僅供歷史參考。
 
 ## 0. 目前進度與怎麼跑（2026-09-25）
 
@@ -18,13 +18,13 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 .venv\Scripts\python -m unittest discover -s tests              # 測試（無 linter 設定）
 ```
 
-- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`codex_app_server.py`（Codex 官方 stdio 協定，登入由 Codex CLI 管理）、`providers/{claude,codex,antigravity,copilot}.py`、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
+- 結構：`model.py`（資料模型、時間解析、label 推導、遮罩、檔案來源的過期／歸零規則）、`codex_app_server.py`（Codex 官方 stdio 協定，登入由 Codex CLI 管理）、`providers/{claude,codex,antigravity,copilot,grok}.py`、`__main__.py`（probe／tray）、`win32tray.py`、`icon.py`、`placement.py`、`card.py`、`app.py`。測試要在 venv 跑（`test_icon` 要 Pillow、`test_card` 要 PySide6，用 offscreen 平台）。
 - 更新策略（業主 2026-09-26 定：人不會時時盯著看，不要不斷去打對方的服務）：**背景每 2 分鐘只讀本機檔案、不連網**——Claude 的 statusLine 快取、Codex 的 rollout（`providers.fetch_local_one`／`codex.fetch_local`，`app.BACKGROUND_LOCAL`），低額度通知靠這個。**雲端來源只在打開卡片時查**（Codex App Server 2 分鐘、Antigravity／Copilot 5 分鐘內不重查），或右鍵「立即刷新」強制查。背景讀到的本機紀錄若比手上的數字舊（例如剛用 App Server 查過）就丟掉，讀不到也不蓋掉（`TrayApp._on_fetched_local`）。⚠️ 代價：在網頁版／IDE 用掉的 Codex 額度不會寫進本機 rollout，背景察覺不到，要等打開卡片；Antigravity、Copilot 沒有本機紀錄，只能看的時候才知道。
 - **活動偵測（2026-09-29，`activity.py`）**：在上面「閒置不連網」的前提下，看本機檔案 mtime 偵測哪一家正在用（Claude `projects/*/*.jsonl`、Codex 最新 rollout、Antigravity `brain/*/.system_generated/logs/transcript.jsonl`、Copilot 只有 VS Code Chat 的 `emptyWindowChatSessions`／`chatSessions`），活躍的那家每 25 秒查一次、停用 90 秒後補查一次再回慢速，失敗退避、鎖定／螢幕關閉不查，**人不在也不查**（`win32tray.user_idle_seconds`＝`GetLastInputInfo`，滑鼠鍵盤停 300 秒；期間排程狀態不動，人一回來還在用或剛用完的那家自然補查；代價：無人看管的長任務燒額度時，低額度通知要等人回來才跳，Claude 只讀本機不受影響）。⚠️ 訊號檔必須排除我們自己會寫的（agy 的 `log/cli-*.log`、`~/.copilot/logs`）；Copilot CLI／JetBrains／網頁版偵測不到。`app.TrayApp._activity_tick`（8 秒一次，只 stat 檔案）。`tests/test_activity.py`。
-- **Grok 加回來（2026-09-29，只有個人版）**：業主決定 xAI 還沒回信前，先只在個人版加回，**Store 版不能有**。做法：`providers.modules(packaged)`——有 MSIX 套件身分（`startup.is_packaged()`）就不註冊 grok，設定／卡片／通知／探測都看不到；沒有套件身分（venv、`dist\AiQuotaTray.exe`）才有，預設不勾。`providers/grok.py` 與 `net.py` 從 `7376fac` 還原（`fetch` 不再看 `use_token`，沒勾選就不會被呼叫）；讀 `~/.grok/auth.json`（我們不碰 refresh_token；access token 約 6 小時過期，CLI 沒開就沒人續期，所以過期或 2 分鐘內將過期時先跑官方 `grok models`〔只列模型、不耗額度，2026-09-29 實測會把 auth.json 的 token 換新〕再讀，續不了才 `auth_expired`「開一下 Grok CLI」）、打 `cli-chat-proxy.grok.com/v1/billing`；每 5 分鐘內不重查、沒有活動偵測訊號。設定視窗多一列（視窗高度 `EXTRA_ROWS_H` 依 provider 數自動加高，Store 版維持 683）。⚠️ **同一個 `dist` 資料夾會被 `pack_msix.py` 複製進 MSIX**，所以 Store 版的「沒有 Grok」靠的是執行時的套件身分判斷、不是打包差異；隱私權政策等「不碰 token」的文案因此不用動，但**送審前務必用 loose registration 確認 Store 版設定裡沒有 Grok**（還沒做）。**官方沒有給第三方讀額度的介面**（2026-09-29 查過 `docs.x.ai/build/overview` 與 `/build/features/status-line`，以及本機 `~/.grok/docs/user-guide/`）：入門頁只提 ACP 與 `XAI_API_KEY`，沒有用量／額度／帳單的 API 或 CLI；status line 的 payload 只有 session 層級（context、花費、token），文件明寫不送 rate-limit 摘要；`grok usage` 只給單一 session 的 token 與花費；方案額度只在互動介面 `/usage`，headless 沒有做法。所以 Grok 目前只能靠內部 billing 端點，Store 版要等 xAI 回信。真資料 2026-09-29 看到了（GrokPro 週視窗 17%、resets 10/03）；`tests/test_grok.py` 夾具是編的。
+- **Grok**：0.1.4（2026-10-03）起個人版與 Store 版都有、預設不勾，走官方 `grok agent stdio`、不碰 token（做法與政策查核見 §3、下方「0.1.4」）。2026-09-29 只給個人版的做法（`providers.modules(packaged)`、讀 auth.json、`grok models` 續期、`net.py`）已移除，原文在 `D:\FISH\git\.ai\log\2026-10.md`。
 - Copilot 的 SDK `reset_date` 在此環境回傳過去日期；若無有效的未來日期，有限額度依 GitHub 官方規則推算下一個月 1 日 00:00 UTC 重置，卡片倒數前顯示「約」／`~` 以區分推算值。
 - Copilot runtime（約 111 MB，含微軟專有元件、授權不允許我們重新散佈，所以不打包）：**勾選 Copilot 時、或啟動時已勾選但還沒下載，就在背景先下載**（`copilot.start_prepare`，呼叫 SDK 內部 `_cli_download.ensure_runtime_wrapper`——SDK 沒有公開下載函式，官方做法 `python -m copilot download-runtime` 打包版用不了；pyproject 已釘死 SDK 版本）。下載完成前 fetch 回 `preparing`，卡片顯示「正在下載 Copilot 元件」，不會在查詢途中卡住下載；下載失敗下次查詢時回報並重試。判斷是否下載好要用 SDK 自己的 `_runtime_bundle_is_complete`（`get_cached_cli_path` 會要求一個實際不存在的 `copilot.exe`，永遠回 None）。2026-09-26 用 `COPILOT_CLI_EXTRACT_DIR` 指到空資料夾模擬新電腦：第一次查詢 0.01 秒回 preparing、下載 11 秒、之後正常查到。查詢加 45 秒逾時（SDK 預設不設逾時，卡住一次 Poller 就永遠不再送出這家；正常約 5 秒）。沒登入：SDK 1.0.14 的 `account.getCurrentAuth` 解析不了 runtime 的回傳（SDK 自己的 bug），改成看錯誤訊息的字（`copilot.AUTH_WORDS`）→ `auth_expired`，卡片提示 `copilot login`。
-- Codex App Server 關閉：先關 stdin 讓它自己退（正常時 `cmd.exe → node.exe → codex.exe` 三層一起結束，實測過）；2 秒沒退才 `taskkill /T /F`——Windows 上 `codex` 是 npm 的 `codex.CMD`，`Popen.kill()` 只殺得到 `cmd.exe`，裡面兩層會變孤兒（`codex_app_server._kill_tree`，實測三層都清掉）。
+- Codex App Server 關閉：先關 stdin 讓它自己退（正常時 `cmd.exe → node.exe → codex.exe` 三層一起結束，實測過）；2 秒沒退才 `taskkill /T /F`——Windows 上 `codex` 是 npm 的 `codex.CMD`，`Popen.kill()` 只殺得到 `cmd.exe`，裡面兩層會變孤兒（`codex_app_server.kill_tree`，實測三層都清掉；Grok 的 agent 行程也共用它）。
 - probe 除了 Copilot 以外只用標準函式庫（Copilot 要 `github-copilot-sdk`，延後到查詢時才 import，沒裝時只有 Copilot 那一家變 error）；`requires-python >= 3.11`。
 - **P2 與 §4 的差異**：系統匣走 **ctypes** 而不是 pywin32（pywin32 沒包 `Shell_NotifyIconGetRect`，VERSION_4 的 union 也難填）。右鍵選單用原生 `TrackPopupMenu`（先 `SetForegroundWindow`，否則點外面不會關）。收回呼訊息的是隱藏的**頂層**視窗、不是 message-only（`TaskbarCreated` 只廣播給頂層視窗，Explorer 重啟會自動重新登錄圖示）。對該視窗送 `WM_CLOSE` ＝ 正常結束（會 `NIM_DELETE`，不留殘影）。單一實例用具名 mutex `Local\AiQuotaTray.SingleInstance`。
 - 工作列圖示：啟動時呼叫 `SetCurrentProcessExplicitAppUserModelID("AiQuotaTray.App")`（`win32tray.set_app_id`），否則 venv 版的視窗會被歸到 `pythonw.exe`、工作列顯示 Python 圖示。
@@ -99,11 +99,20 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 打包 `AiUsageMeter-0.1.3.0-x64.msix`（48.6 MB）；✅ **WACK `OVERALL_RESULT=PASS`**（2026-09-28 23:41，24 項 22 PASS，剩「封存檔案」「封鎖的可執行檔」兩個 optional FAIL，同以往）。🔴 第一次跑失敗：業主平常的帳號裝著 Store 版 0.1.1.0，UAC 切到的管理員帳號做 loose registration 會 `0x80073D19`（「另一個使用者已安裝此應用程式的封裝版本」）→ 先在業主帳號 `Remove-AppxPackage`、跑完從 Store 裝回來（設定檔在真正的 `%LOCALAPPDATA%`，不會掉；StartupTask 會掉，要重勾）。`wack.ps1` 已加 `Get-AppxPackage -AllUsers` 檢查，其他帳號有裝就先停下來說明。
 - ⏸️ **Submission 3 改送 0.1.3.0**（2026-09-28，業主決定：週日沒人審，撤下 0.1.2 直接換）：已按「Cancel certification」把 0.1.2.0 撤回成草稿 → 業主拖入 0.1.3.0（Validated，0.1.2.0 儲存時自動移除）→ 五語「此版本的新增功能」改成 `docs/store-listing-0.1.3.md`（含 0.1.2 的項目，Store 使用者從 0.1.1 直接升上來），重新載入逐語核對過。其他欄位沒動。✅ **業主 2026-09-29 已送出認證**。💡 套件 48.6 MB 超過瀏覽器工具 10 MB 上傳上限，只能業主拖；Partner Center 清單的 `releaseNotes` textarea 用原生 setter＋input 事件設值、按 Save 會存進去。🔴 **日文、德文的 Keywords 從 0.1.2 起就是空的**（業主 2026-09-29 發現；英文、繁中、簡中有），已補上 `store-listing-0.1.2.md` 的那 7 個。💡 Keywords 是 chip 輸入框：要真的打字＋Enter，**按 Save 前先點別處讓它失焦、用真的滑鼠點 Save**；第一次用 JS `button.click()` 存，頁面看似成功，重新載入卻是空的。改完一定要重新載入核對。💡 業主那台的 Store 版 0.1.1.0 為了跑 WACK 已移除，要從 Store 裝回來。
 
+### 0.1.4（2026-10-03）：Store 版加入 Grok、活動偵測
+
+- **Grok 改走官方 Grok Build CLI 的 Agent 模式**（`grok agent --no-leader stdio` → `_x.ai/billing`），兩版都註冊（`providers.ALL` 不再分 packaged）。tray 不讀 `~/.grok/auth.json`，登入與續期交給 CLI；細節、401 重試、政策查核結論見 §3 Grok。`net.py` 刪除（只有舊 Grok 用）；`codex_app_server._kill_tree` 改名 `kill_tree` 給 Grok 共用。
+- 介面：設定的 Grok 說明改成「透過官方 Grok Build CLI（grok agent）查詢；請先執行 grok login」、卡片未登入提示 `card.auth_grok`、免責聲明加 xAI（五語）。設定視窗兩版都是五列（683 + 53）。示範模式多一張 Grok（SuperGrok、週 42%）。
+- 一起出去的：`4b7e2c3` 的活動偵測分級輪詢（0.1.3 送審後才 commit，這版第一次進 Store）、card.py 服務名稱改淺藍 `#00BFFF`（`PROVIDER_NAME_COLOR`，業主的改動）。
+- 隱私權政策／產品頁（fish-zero-web `9cef45b`，已上線）：Grok 列進「啟動的官方工具」、補「正在使用時最快每 25 秒查一次、停用 90 秒補查、鎖定／螢幕關閉／5 分鐘沒動不查」、補「為了判斷正在用哪個工具，只看檔案修改時間、不讀內容」、免責加 xAI；smoke 測試鎖住。
+- 商店文案：`docs/store-listing-0.1.4.md`（五語新增功能＋說明逐句替換）；`docs/store-listing.md` §5 runFullTrust、§6 認證注意事項已同步（加 Grok、「五個服務」、活動偵測只看修改時間）。
+- 真 CLI 實測（2026-10-03）：probe 回 `ok`、週 29%、SuperGrok、`source=grok-cli`，查完沒有殘留 grok 行程。unittest 222 過。
+
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
 
 > ⏸️ **2026-09-27 的狀態**：0.1.1.0（Submission 2）已上架。0.1.2.0 的 **Submission 3** 在 Partner Center 已全部填好：套件 `AiUsageMeter-0.1.2.0-x64.msix` Validated、五語清單都 Complete（各 3 張截圖＋300×300 標誌；英文與繁中的第 3 張換成新版設定畫面）、「其他測試資訊」的認證注意事項改成五語版。只差業主按「提交以進行認證」。💡 Partner Center 清單頁的截圖本身就是「更新圖片」按鈕、旁邊有自己的 file input，替換單張可以原位上傳、不用刪掉重排。下一版：xAI（Grok）看回信。
 
-> 📨 **xAI（Grok）詢問中**：業主 2026-09-26 12:44 寄信給 `sales@x.ai`，問第三方 App 能不能讀 Grok Build CLI 的本機 token、呼叫 `cli-chat-proxy.grok.com/v1/billing` 等端點來顯示使用者自己的用量，或有沒有官方介面可用。業主決定：**回覆 OK 才在下一版加回來**。⚠️ 信裡附的 `blob/main/.../providers/grok.py` 已經 404（P5 `236e126` 刪掉了）；對方要看程式碼時改給固定版本 `https://github.com/Fishforgithub/ai-quota-tray/blob/7376facef447ea03969deed62bfe4aaf9a6a30f2/ai_quota_tray/providers/grok.py`（實測 200）。信裡的產品名是舊的 AI Quota Tray。🔴 **加回來不只是改程式**：隱私權政策、商店說明與功能（「不讀取、不保存登入權杖」）、runFullTrust 說明（「reads no tokens」）、認證注意事項、產品頁都寫死了「不碰 token」，Grok 若仍是讀 token 的做法，這些都要改成「Grok 例外、需使用者自行啟用」並重新送審；若 xAI 給的是官方 API／CLI 指令，就能維持「不碰 token」的說法。
+> 📨 **xAI（Grok）**：業主 2026-09-26 寄信給 `sales@x.ai` 詢問，到 2026-10-03 沒有回覆。業主 2026-10-03 決定**不等回信**，條款查核沒有明確禁止 → 0.1.4 把 Grok 包進 Store 版。因為改走官方 `grok agent stdio`、不讀 token，原本擔心的「隱私權政策、商店說明、runFullTrust、認證注意事項都寫死不碰 token」**全部不用改成例外**，只是把 Grok 加進工具清單。對方之後若回信要看程式碼，給目前的 `providers/grok.py`（舊連結 `7376fac` 是讀 token 的舊做法）。
 
 1. ~~先決定散佈管道~~ ✅ 2026-09-26 定案：**Microsoft Store**，公司同事也等 Store 版（業主決定不先發可攜版 zip：未簽章 exe 會跳 SmartScreen、可能被公司政策擋，且開機啟動會記住解壓路徑）。個人版 `dist\AiQuotaTray\` 只給業主自己用；要發給別人的話記得是**整個資料夾**（PyInstaller onedir），不是只有 exe。
 2. 上線版**不能由 tray 直接碰 token**（§1 原則 5、§5 政策）：設定視窗已沒有來源切換，Grok 已停用；Codex 走官方 App Server、Copilot 走官方 SDK、Antigravity 走官方 agy CLI。須驗證 MSIX 套件呼叫外部 CLI 與 SDK runtime 的行為。
@@ -130,9 +139,9 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 
 1. **視窗不寫死**：三家視窗結構已不同，UI 不得假設「5h + 週」。視窗名稱由實際長度（秒）推導。
 2. **只存 `resets_at`（UTC 絕對時間）**，倒數在本地算。抓取頻率與畫面更新頻率分離。
-3. **身分驗證交給官方 CLI**：Codex／Antigravity 不由 tray 讀取憑證；Claude 僅讀本機紀錄。Grok／Copilot 目前仍讀取 CLI 憑證，但不自行 refresh。
+3. **身分驗證交給官方 CLI**：Codex／Antigravity／Copilot／Grok 都不由 tray 讀取憑證（App Server、agy、SDK、`grok agent`）；Claude 僅讀本機紀錄。
 4. **每個 provider 獨立失敗**：格式變了只影響該區塊（顯示「Grok：格式變了」），整支程式不能掛。
-5. **上線版不碰 token**（見 §5）；Grok／Copilot 的發佈取捨仍待決定。
+5. **上線版不碰 token**（見 §5）。0.1.4 起五家都做到了，個人版與 Store 版的 provider 完全一樣。
 
 ## 2. 資料模型
 
@@ -163,23 +172,14 @@ class ProviderState:
 - **回退**：App Server 不可用或沒有 Codex 額度資料時，解析 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 最近一筆 `token_count.rate_limits`。本機資料可能過時，卡片會顯示回退警示。
 - 兩種來源都依實際視窗長度決定 label，略過 null 視窗。舊 `wham/usage` 內部端點已移除。官方協定參考 [Codex App Server](https://learn.chatgpt.com/docs/app-server)。
 
-### Grok（已停用；以下為歷史研究）
-- 2026-06 起 Grok 改制：不再計訊息數，付費方案共用**每週運算額度池**（Chat/Imagine/Voice/Build/API 共用），**沒有 5h 視窗**。部分方案另有月額度。
-- 舊的 grok.com `/rest/rate-limits`（remainingQueries / windowSizeSeconds，需瀏覽器 cookie、會被 Cloudflare 擋）是改制前模型，**不採用**。
-- **可行做法**（需先用 Grok Build CLI 登入）：
-  - token：`~/.grok/auth.json`，每個 entry 有 `key`（access token）、`refresh_token`、`expires_at`、`oidc_issuer`、`oidc_client_id`
-  - 共同 headers：`Authorization: Bearer <token>`、`Accept: application/json`、`x-grok-client-mode: cli`
-  - 週額度：`GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`
-    - `currentPeriod.type == "USAGE_PERIOD_TYPE_WEEKLY"`，`currentPeriod.end` = 重置時間（缺時 fallback `billingPeriodEnd`）
-    - `creditUsagePercent`：整池已用 % → **主數字用這個**（共用池，真正會擋人的是整池）
-    - `productUsage[]`：`{product: "GrokBuild", usagePercent}` → 放 detail
-    - 無百分比時 fallback：`onDemandUsed / onDemandCap`
-  - 月額度：`GET https://cli-chat-proxy.grok.com/v1/billing` → `monthlyLimit`、`used`、`billingPeriodEnd`（`monthlyLimit` 缺或 ≤0 → 無月視窗）
-  - 方案資訊：`GET .../v1/user?include=subscription` → `subscriptionTier`
-  - ⚠️ **proto3 陷阱**：值為 0 的欄位會被省略。週期型別是 WEEKLY 但沒有百分比欄位 → 當成 **0%**，不是「無資料」。
-  - 數值欄位可能包成 `{"val": ...}` 形式，要做 unwrap。
-  - 參考實作：PyPI 套件 `quse`（`quse/grok_quota.py`），MIT。
-- xAI 對第三方使用此 token 的條款未查到明確說法 → 上線版建議：選配 + 告知風險，或第一版不支援。
+### Grok（SpaceXAI；0.1.4 起 Store 版也有）
+- 2026-06 起 Grok 改制：付費方案共用**每週運算額度池**（Chat/Imagine/Voice/Build/API 共用），**沒有 5h 視窗**。部分方案另有月額度。
+- **做法（2026-10-03 起）**：起官方 Grok Build CLI 的 Agent 模式 `grok agent --no-leader stdio`（ACP，JSON-RPC over stdio）→ `initialize` → `_x.ai/billing`（ACP 擴充方法線上要加底線；不加底線回 Method not found）→ 關 stdin 讓它自己退（2 秒沒退才 `kill_tree`）。每次查詢一個行程、不常駐；實測 initialize 約 0.9 秒、billing 約 1 秒，probe 含 Python 啟動約 5.8 秒；查完沒有殘留的 grok 行程。不開 session、不送 prompt，不耗額度。
+  - 為什麼算官方介面：`~/.grok/docs/user-guide/15-agent-mode.md` 寫明 Agent 模式給「IDEs, SDKs, eval harnesses, and custom apps」用，`x.ai/*` 擴充方法要 client 自己從 initialize 探索；`x.ai/billing` 是 CLI 自己的 `/usage` 用的那一個（xai-org/grok-build 已開源，Apache-2.0：`crates/codegen/xai-grok-shell/src/extensions/billing.rs`）。⚠️ 它沒列在文件的擴充方法表格、也不在 initialize 回傳裡，CLI 改版可能改名或拿掉。
+  - 登入與續期都在 CLI 裡：tray **不讀 `~/.grok/auth.json`、不碰 token**（`tests/test_grok.py` 會擋 `read_text`／`Authorization` 進到 grok.py）。agent 啟動時 `AuthManager.start_proactive_refresh` 會在 token 過期後 1 秒自己續期，但 billing 用的是 `current_or_expired()`，剛起就問可能 401 → 同一個行程等 3、6 秒再問（`AUTH_RETRY_DELAYS_S`），還是 401 才 `auth_expired`。完全沒登入回 ACP `-32000`（auth_required），不重試，卡片提示 `grok login`（`card.auth_grok`）。沒裝 CLI → error「找不到 Grok Build CLI」。
+  - 回傳：`{"config": {creditUsagePercent, currentPeriod{type,start,end}, onDemandCap/Used, prepaidBalance, isUnifiedBillingUser, billingPeriodStart/End, monthlyLimit?, used?, history[]}, "subscription_tier": "SuperGrok"}`（`subscription_tier` 是 snake_case，CLI 從 remote settings 補的）。主數字用整池 `creditUsagePercent`；沒有時退回 `onDemandUsed / onDemandCap`；⚠️ proto3：WEEKLY 但沒有百分比 → 當 0%，數值可能包成 `{"val": ...}`。舊欄位 `monthlyLimit` > 0 才有月視窗。舊做法回傳裡的 `productUsage[]` 經 CLI 的 struct 轉手後不會出現。
+- 2026-10-03 政策查核（ToS「Last Updated 2026-09-11」、AUP「Effective 2026-08-14」，都直接讀 x.ai/legal 原文並與上一版 diff）：**沒有條文禁止第三方 App 以 OAuth／CLI 登入查詢用量**。最接近的是 AUP「Accessing the Services through **unauthorized** automated or non-human means」——08-14 版才加上 unauthorized（06-26 版是所有 automated 都禁止，反而是放寬）；ToS 有「不得分享帳號憑證或讓他人使用你的帳號」。走 Agent 模式＝官方文件寫明給自訂 App 用的介面、憑證不離開 CLI，兩條都不構成問題；舊做法（自己讀 token 打私有端點）比較灰（同類專案 grok-budget-mcp 自己寫「may conflict with xAI's terms」）。業主 2026-10-03 決定不等 xAI 回信直接上 Store。
+- 舊做法（0.1.3 以前，2026-10-03 移除）：讀 `~/.grok/auth.json` 的 access token、過期就跑 `grok models` 讓 CLI 續期、直接打 `cli-chat-proxy.grok.com/v1/billing`；`net.py` 一起刪了。細節見 `D:\FISH\git\.ai\log\2026-10.md`。
 
 ### Google Antigravity CLI（`agy`）
 - 透過 agy CLI 原生非互動指令查詢額度：`agy -p "/usage" --output-format json`（非互動 print 模式會自動展開 slash commands，且 `total_tokens: 0` 不消耗任何模型 token）。
@@ -200,6 +200,7 @@ class ProviderState:
 | Codex | 120 s（官方 App Server；失敗時讀本機 rollout） |
 | Antigravity | 300 s |
 | Copilot | 300 s |
+| Grok | 300 s（每次查詢起一個 `grok agent stdio`、查完就關；沒有活動偵測訊號） |
 
 UI：卡片開著每秒重算倒數；關閉時每 30 秒更新圖示。
 

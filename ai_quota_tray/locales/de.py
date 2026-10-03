@@ -24,6 +24,7 @@ STRINGS = {
     "card.auth_expired": "Token abgelaufen; bitte {cli} öffnen",
     "card.auth_antigravity": "Antigravity CLI ist nicht angemeldet; mit agy anmelden",
     "card.auth_copilot": "Copilot-Anmeldung abgelaufen; copilot login ausführen",
+    "card.auth_grok": "Grok CLI nicht angemeldet oder Anmeldung abgelaufen; grok login ausführen",
     "card.disabled": "Nicht aktiviert",
     "card.claude_needs_hook": (
         "Noch keine Daten: Claude-Nutzungserfassung in den Einstellungen… installieren "
@@ -88,13 +89,13 @@ STRINGS = {
     "settings.update": "Update verfügbar",
     "settings.link.privacy": "Datenschutzerklärung",
     "settings.link.website": "Website",
-    "settings.disclaimer": "Unabhängig von Anthropic, OpenAI, GitHub und Google",
+    "settings.disclaimer": "Unabhängig von Anthropic, OpenAI, GitHub, Google und xAI",
     "settings.yes": "Ja",
     "settings.no": "Nein",
     "settings.source.codex": "Offizieller App Server; sonst lokale Daten.",
     "settings.source.antigravity": "Offizielle agy CLI; vorher mit agy anmelden.",
     "settings.source.copilot": "Offizielles SDK; vorher copilot login ausführen.",
-    "settings.source.grok": "Nur Privatversion: liest die lokale Anmeldung der Grok Build CLI; läuft sie ab (ca. 6 Stunden), erneuert die Grok CLI sie selbst.",
+    "settings.source.grok": "Nutzt die offizielle Grok Build CLI (grok agent); vorher mit grok login anmelden.",
     "settings.language": "Sprache",
     "settings.cancel": "Abbrechen",
     "settings.save": "Speichern",

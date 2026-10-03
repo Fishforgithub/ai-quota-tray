@@ -351,7 +351,7 @@ class SettingsDialogTest(unittest.TestCase):
         self.assertEqual(dlg.windowTitle(), f"AI Usage Meter · 服務設定（Ver. {display_version()}）")
         self.assertFalse(dlg.windowIcon().isNull())
         self.assertEqual(dlg.selected_enabled(), {"claude", "codex"})
-        self.assertIn("grok", dlg.checks)  # 個人版才有 Grok（providers.modules）；預設不勾
+        self.assertIn("grok", dlg.checks)  # 0.1.4 起 Store 版也有 Grok；預設不勾
         self.assertNotIn("grok", dlg.selected_enabled())
         self.assertEqual(dlg.findChildren(QRadioButton), [])
         descriptions = [w.text() for w in dlg.findChildren(QLabel) if w.objectName() == "sourceDescription"]

@@ -24,7 +24,7 @@ from .providers import ALL
 
 ORDER = tuple(ALL)
 ROW_H = 53
-EXTRA_ROWS_H = ROW_H * (len(ORDER) - 4)  # 個人版多一列 Grok；Store 版四列維持原高度
+EXTRA_ROWS_H = ROW_H * (len(ORDER) - 4)  # 版面以四列為基準（683）；0.1.4 起兩版都多一列 Grok
 
 PALETTE = {
     "dark": {"bg": "#23262b", "panel": "#1d2025", "line": "#3a3f47", "text": "#e8eaed",

@@ -20,7 +20,7 @@ class AppServerError(RuntimeError):
     """Codex App Server 無法提供資料。"""
 
 
-def _kill_tree(process: subprocess.Popen) -> None:
+def kill_tree(process: subprocess.Popen) -> None:
     """卡住不退時連子行程一起殺。
 
     Windows 上 `codex` 是 npm 的 codex.CMD：cmd.exe → node.exe → codex.exe 三層。
@@ -132,7 +132,7 @@ class AppServerClient:
         try:
             process.wait(timeout=CLOSE_GRACE_S)  # 正常：關掉 stdin 後 codex 自己退出，整串一起結束
         except subprocess.TimeoutExpired:
-            _kill_tree(process)
+            kill_tree(process)
 
     def close(self) -> None:
         with self._lock:

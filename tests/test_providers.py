@@ -324,12 +324,10 @@ class ProbeTest(unittest.TestCase):
         self.assertEqual(state.status, ERROR)
         self.assertIn("boom", state.error)
 
-    def test_grok_only_in_personal_build(self):
-        from ai_quota_tray.providers import modules
-        self.assertIn("grok", [m.NAME for m in modules(packaged=False)])
-        self.assertNotIn("grok", [m.NAME for m in modules(packaged=True)])  # Store 版看不到 Grok
-        self.assertEqual([m.NAME for m in modules(packaged=True)],
-                         ["claude", "codex", "antigravity", "copilot"])
+    def test_every_build_has_the_same_providers_in_display_order(self):
+        # 0.1.4 起 Grok 改走官方 CLI、不碰 token，Store 版與個人版一樣
+        from ai_quota_tray.providers import ALL
+        self.assertEqual(list(ALL), ["claude", "codex", "antigravity", "copilot", "grok"])
 
 
 if __name__ == "__main__":

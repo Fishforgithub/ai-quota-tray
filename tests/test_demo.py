@@ -21,7 +21,7 @@ NOW = datetime(2026, 9, 26, 6, 0, tzinfo=timezone.utc)
 class SampleTest(unittest.TestCase):
     def test_covers_every_provider_and_every_colour(self):
         states = demo.sample_states(NOW)
-        self.assertEqual([n for n, _ in states], [n for n in ALL if n != "grok"])  # 示範資料是給 Store 審核人員看的，Store 版沒有 Grok
+        self.assertEqual([n for n, _ in states], list(ALL))
         levels = {level_for(w.remaining_pct) for _, s in states for w in s.windows}
         self.assertEqual(levels, {"green", "yellow", "red"})  # 審核人員一次看到三種顏色
         self.assertTrue(all(w.resets_at > NOW for _, s in states for w in s.windows))
@@ -72,7 +72,7 @@ class TrayDemoTest(unittest.TestCase):
         tray_app._poll_local()
         self.app_mod.Poller.refresh.assert_not_called()
         self.app_mod.copilot_provider.start_prepare.assert_not_called()
-        self.assertEqual([n for n, _ in tray_app._card_states()], [n for n in ALL if n != "grok"])  # 示範資料是給 Store 審核人員看的，Store 版沒有 Grok  # 沒勾的也顯示
+        self.assertEqual([n for n, _ in tray_app._card_states()], list(ALL))  # 沒勾的也顯示
         self.assertIn("示範模式", tray_app._banner())
 
     def test_late_result_in_demo_is_kept_but_not_shown_or_alerted(self):

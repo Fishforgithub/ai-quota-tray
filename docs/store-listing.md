@@ -203,8 +203,8 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 > AI Usage Meter is a Win32 desktop app (Python with Qt, packaged with PyInstaller) that lives in the Windows notification area. It needs full trust for the following:
 >
 > 1. Notification area icon and hover card: it registers its icon with Shell_NotifyIconW (NOTIFYICON_VERSION_4) to receive hover events, uses Shell_NotifyIconGetRect to place its card next to the icon, TrackPopupMenu for the right-click menu, and balloon notifications (NIF_INFO) for low-usage alerts.
-> 2. Reading usage records that other developer tools keep in the user's profile, outside the package: %USERPROFILE%\.claude\usage-cache.json and %USERPROFILE%\.codex\sessions\. Only the usage-limit fields are used.
-> 3. Starting official command-line tools that the user installed and signed in to, as child processes: Codex CLI ("codex app-server", over stdin/stdout), Antigravity CLI ("agy -p /usage"), and the GitHub Copilot SDK runtime. These tools handle sign-in themselves; the app never reads their credentials or tokens. When it closes, the app makes sure the Codex processes it started exit: it closes their input first, and uses taskkill /T only if they are still running after 2 seconds.
+> 2. Reading usage records that other developer tools keep in the user's profile, outside the package: %USERPROFILE%\.claude\usage-cache.json and %USERPROFILE%\.codex\sessions\. Only the usage-limit fields are used. To tell which tool is in use, it also checks only the last-modified time, never the contents, of those tools' session files (%USERPROFILE%\.claude\projects\, %USERPROFILE%\.gemini\antigravity-cli\brain\, and VS Code's Copilot Chat sessions under %APPDATA%\Code\User\).
+> 3. Starting official command-line tools that the user installed and signed in to, as child processes: Codex CLI ("codex app-server", over stdin/stdout), Antigravity CLI ("agy -p /usage"), the GitHub Copilot SDK runtime, and Grok Build CLI ("grok agent stdio", its official Agent Client Protocol interface, over stdin/stdout; started only for one usage lookup and closed right after). These tools handle sign-in themselves; the app never reads their credentials or tokens. The app makes sure the processes it started exit: it closes their input first, and uses taskkill /T only if they are still running after 2 seconds.
 > 4. Optional, only after the user presses "Install" and confirms: pointing Claude Code's status line setting (%USERPROFILE%\.claude\settings.json, backed up first) to a small script in %USERPROFILE%\.claude\ai-quota-tray\ that saves the usage fields. "Remove" restores the original setting.
 > 5. When the user turns on GitHub Copilot, the official Copilot SDK downloads its runtime from GitHub into %LOCALAPPDATA%\github-copilot-sdk.
 > 6. It animates its notification area icon by swapping pre-rendered frames (NIM_MODIFY), and registers for session lock (WTSRegisterSessionNotification) and display power (RegisterPowerSettingNotification) notifications so the animation pauses when the screen is locked or off. It also asks the Microsoft Store whether an update is available (StoreContext.GetAppAndOptionalStorePackageUpdatesAsync) and, only if the user clicks, opens the Store product page.
@@ -215,15 +215,15 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 
 > AI Usage Meter 是住在 Windows 系統匣的 Win32 桌面程式（Python＋Qt，用 PyInstaller 打包），以下幾件事需要完全信任權限：
 > 1. 系統匣圖示與懸停卡片：`Shell_NotifyIconW`（VERSION_4）收 hover 事件、`Shell_NotifyIconGetRect` 把卡片放在圖示旁、`TrackPopupMenu` 右鍵選單、`NIF_INFO` 低額度通知。
-> 2. 讀取其他開發工具放在使用者資料夾（套件外）的用量紀錄：`.claude\usage-cache.json`、`.codex\sessions\`，只用額度欄位。
-> 3. 以子程序啟動使用者自己安裝、登入的官方 CLI：`codex app-server`（stdin/stdout）、`agy -p /usage`、Copilot SDK runtime。登入由它們自己處理，本 App 不讀它們的憑證或權杖；關閉時先關掉 Codex 的輸入讓它自己結束，2 秒後還在才用 `taskkill /T` 結束自己啟動的程序樹。
+> 2. 讀取其他開發工具放在使用者資料夾（套件外）的用量紀錄：`.claude\usage-cache.json`、`.codex\sessions\`，只用額度欄位。為了判斷正在用哪個工具，另外只看這些工具對話紀錄檔（`.claude\projects\`、`.gemini\antigravity-cli\brain\`、VS Code Copilot Chat 的 `chatSessions`）的修改時間，不讀內容。
+> 3. 以子程序啟動使用者自己安裝、登入的官方 CLI：`codex app-server`（stdin/stdout）、`agy -p /usage`、Copilot SDK runtime、`grok agent stdio`（Grok Build CLI 官方的 ACP 介面，stdin/stdout；每次查詢才起、查完就關）。登入由它們自己處理，本 App 不讀它們的憑證或權杖；先關掉輸入讓它們自己結束，2 秒後還在才用 `taskkill /T` 結束自己啟動的程序樹。
 > 4. 選用，使用者按「安裝」並確認後才做：把 Claude Code 的狀態列設定（先備份）指向 `.claude\ai-quota-tray\` 裡的小程式，只存額度欄位；按「移除」還原。
 > 5. 使用者啟用 Copilot 時，官方 SDK 會從 GitHub 下載 runtime 到 `%LOCALAPPDATA%\github-copilot-sdk`。
 > 6. 系統匣圖示動畫：預先算好的畫格用 `NIM_MODIFY` 換圖；註冊鎖定畫面（`WTSRegisterSessionNotification`）與螢幕電源（`RegisterPowerSettingNotification`）通知，鎖定或螢幕關閉時停轉。另外向 Microsoft Store 查詢有沒有更新（`StoreContext`），使用者點了才開 Store 商品頁。
 >
 > 以目前使用者身分執行（asInvoker）、不要求系統管理員；不裝驅動或服務、不注入或修改其他程序、不讀密碼／權杖／認證存放區、沒有自己的伺服器、不傳資料給開發者。開機啟動走 `windows.startupTask`。
 
-**對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`_kill_tree`）、`providers/antigravity.py`、`providers/copilot.py` ④`claude_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
+**對照的程式碼**：①`win32tray.py`、`placement.py` ②`providers/claude.py`、`providers/codex.py` ③`codex_app_server.py`（`shutil.which("codex")`、`kill_tree`）、`providers/antigravity.py`、`providers/copilot.py`、`providers/grok.py`（`agent_command`、`_Agent.__exit__`） ④`claude_hook.py` ⑤`providers/copilot.py` 的 `start_prepare` ⑥`packaging/app.manifest`（asInvoker）、`startup.py`（StartupTask）。
 
 ## 6. 給審核人員的認證注意事項
 
@@ -237,11 +237,11 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 
 > AI Usage Meter has no main window. After you start it, it adds an icon to the notification area (system tray). On Windows 11 the icon may first appear in the hidden icons area: click the ^ arrow on the taskbar to find it. The first time it starts, a notification says it is running; clicking the notification opens the card. Starting the app again from the Start menu while it is already running also opens the card.
 >
-> The app shows the usage limits of AI coding tools (Claude Code, Codex, Antigravity CLI, GitHub Copilot) that are installed and signed in on the same PC. A test machine won't have these tools, so the card would only say there is no data yet. To review the full interface without any of them, please use the built-in demo mode:
+> The app shows the usage limits of AI coding tools (Claude Code, Codex, Antigravity CLI, GitHub Copilot, Grok Build CLI) that are installed and signed in on the same PC. A test machine won't have these tools, so the card would only say there is no data yet. To review the full interface without any of them, please use the built-in demo mode:
 >
 > 1. Right-click the tray icon and choose "Settings…".
 > 2. Check "Demo mode" at the bottom left and press "Save".
-> 3. Hover the mouse over the tray icon (or click it once). A card opens with sample data for all four services: percentage left, progress bars in green, yellow, and red, and reset countdowns. A red line at the top of the card says "Demo mode: sample data, not your actual quota".
+> 3. Hover the mouse over the tray icon (or click it once). A card opens with sample data for all five services: percentage left, progress bars in green, yellow, and red, and reset countdowns. A red line at the top of the card says "Demo mode: sample data, not your actual quota".
 >
 > In demo mode the app makes no queries and starts no other tools. No sign-in or account is needed, and there are no in-app purchases.
 >
@@ -254,7 +254,7 @@ v0.1.0.0 送審不到一小時就通過並上架（Submission 1）。業主決�
 > 這個 App 顯示同一台電腦上已安裝並登入的 AI 程式開發工具的用量。測試機不會有這些工具，卡片只會顯示還沒有資料。要在沒有這些工具的情況下看完整介面，請用內建的示範模式：
 > 1. 在系統匣圖示按右鍵，選「設定…」。
 > 2. 勾選左下角的「示範模式」，按「儲存」。
-> 3. 滑鼠移到系統匣圖示上（或點一下）。會彈出四個服務的範例資料卡片：剩餘百分比、綠／黃／紅進度條與重置倒數，卡片頂端有一行紅字「示範模式・以下為範例資料，不是你的額度」。
+> 3. 滑鼠移到系統匣圖示上（或點一下）。會彈出五個服務的範例資料卡片：剩餘百分比、綠／黃／紅進度條與重置倒數，卡片頂端有一行紅字「示範模式・以下為範例資料，不是你的額度」。
 >
 > 示範模式下不查詢任何服務、不啟動其他工具。不需要登入或帳號，也沒有內購。
 >

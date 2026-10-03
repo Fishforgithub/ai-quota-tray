@@ -28,7 +28,8 @@ from .model import (AUTH_EXPIRED, DISABLED, DISPLAY_NAME, ERROR, OK, PREPARING, 
 CLI_NAME = {"claude": "Claude Code", "codex": "Codex CLI",
             "antigravity": "Antigravity CLI", "grok": "Grok Build CLI"}
 # token 不會自己過期、「開一下 CLI」也沒用的，另外寫提示（i18n key）
-AUTH_HINT = {"antigravity": "card.auth_antigravity", "copilot": "card.auth_copilot"}
+AUTH_HINT = {"antigravity": "card.auth_antigravity", "copilot": "card.auth_copilot",
+             "grok": "card.auth_grok"}
 
 THEMES = {
     "dark": {"bg": "#202124", "border": "#3c4043", "text": "#e8eaed", "dim": "#9aa0a6",

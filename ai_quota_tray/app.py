@@ -334,7 +334,7 @@ class TrayApp(QObject):
 
     def _card_states(self) -> list[tuple[str, ProviderState | None]]:
         if self.demo:
-            return demo.sample_states(utcnow())  # 四家全顯示，不管勾了哪幾家
+            return demo.sample_states(utcnow())  # 五家全顯示，不管勾了哪幾家
         return [(name, self._shown(self.states.get(name))) for name in ALL if name in self.enabled]
 
     def _banner(self) -> str | None:
