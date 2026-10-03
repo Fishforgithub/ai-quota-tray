@@ -107,6 +107,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - 隱私權政策／產品頁（fish-zero-web `9cef45b`，已上線）：Grok 列進「啟動的官方工具」、補「正在使用時最快每 25 秒查一次、停用 90 秒補查、鎖定／螢幕關閉／5 分鐘沒動不查」、補「為了判斷正在用哪個工具，只看檔案修改時間、不讀內容」、免責加 xAI；smoke 測試鎖住。
 - 商店文案：`docs/store-listing-0.1.4.md`（五語新增功能＋說明逐句替換）；`docs/store-listing.md` §5 runFullTrust、§6 認證注意事項已同步（加 Grok、「五個服務」、活動偵測只看修改時間）。
 - 真 CLI 實測（2026-10-03）：probe 回 `ok`、週 29%、SuperGrok、`source=grok-cli`，查完沒有殘留 grok 行程。unittest 222 過。
+- 送審後的小改（**不在 0.1.4.0 套件裡，進下一版**）：設定視窗副標題原本寫「查看時更新雲端額度」，活動偵測上線後不對 → 改成「打開卡片或使用工具時更新雲端額度」（五語，`settings.subtitle`）。用 Windows 真字型量過，五語都放得下（離「語言」≥144px）；⚠️ offscreen 平台沒有字型、量出來的寬度不能信。
 - ✅ **Submission 4（0.1.4.0，ID `1152921505702033238`）2026-10-03 已送出認證**（業主確認後由 AI 按下，通過後立即發佈）：套件業主拖入（截圖換新版後 demo 補了重置券，同版號重新打包再拖一次 → 🔴 Partner Center 擋：「兩個完整名稱為 Fish-Zero.AIUsageMeter_0.1.4.0_X64_ 但內容不同的套件」，草稿裡同版號只能有一個檔案，要先 Remove 舊的並 Save、再上傳新的就過了，不必升版號；0.1.3.0 已移除，⚠️ 套件頁那個 Save 用 ref 點沒生效、用座標點才存進去）；五語「此版本新增功能」、說明三句、功能一條照 `docs/store-listing-0.1.4.md` 改；五語截圖 15 張原位替換成新版（重置券、淺藍名稱、Grok）；「其他測試資訊」加 Grok、「all five services」。每一頁都重新載入核對過。💡 這次清單頁的 textarea／input 沒有 `name`（英文頁第一次載入有），要用索引：0＝說明、1＝新增功能、2～13＝功能、16＝簡短描述。💡 截圖替換：`img[alt=listing-screenshot-image]` 的 data URI 解碼後大小＝本機 PNG 大小，可以拿來確認換成功。⚠️ 送審沒跑 WACK（0.1.3.0 PASS 之後只改 Python 碼）；套件身分的 Grok 實測也沒做（要先移除業主帳號的 Store 版）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）

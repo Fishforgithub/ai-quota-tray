@@ -113,7 +113,7 @@ STRINGS: dict[str, tuple[str, str]] = {
     # 設定視窗
     "settings.title": ("AI Usage Meter · 服務設定", "AI Usage Meter · Services"),
     "settings.heading": ("選擇要顯示的服務", "Choose services to show"),
-    "settings.subtitle": ("查看時更新雲端額度", "Cloud updates on view"),
+    "settings.subtitle": ("打開卡片或使用工具時更新雲端額度", "Cloud updates on view or while in use"),
     "settings.col.service": ("服務", "Service"),
     "settings.col.description": ("說明", "Description"),
     # Claude 那一列：說明依 claude_hook.status() 的結果換，按鈕立刻安裝／移除

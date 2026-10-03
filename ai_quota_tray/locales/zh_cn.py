@@ -42,7 +42,7 @@ STRINGS = {
     "alert.reset": "，{countdown} 后重置",
     "settings.title": "AI Usage Meter · 服务设置",
     "settings.heading": "选择要显示的服务",
-    "settings.subtitle": "查看时刷新云端额度",
+    "settings.subtitle": "打开卡片或使用工具时刷新云端额度",
     "settings.col.service": "服务",
     "settings.col.description": "说明",
     "settings.hook.not_installed": "安装用量采集后才能显示 Claude 额度；不会安装 Claude Code。",

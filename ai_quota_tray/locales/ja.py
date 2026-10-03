@@ -42,7 +42,7 @@ STRINGS_JA: dict[str, str] = {
     "alert.reset": "（リセットまで {countdown}）",
     "settings.title": "AI Usage Meter · サービス",
     "settings.heading": "表示するサービスを選択",
-    "settings.subtitle": "クラウドの利用枠は表示時に更新",
+    "settings.subtitle": "クラウドの利用枠は表示時と使用中に更新",
     "settings.col.service": "サービス",
     "settings.col.description": "説明",
     "settings.hook.not_installed": "Claude の利用枠を取得します。Claude Code はインストールしません。",

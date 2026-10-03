@@ -52,7 +52,7 @@ STRINGS = {
     "alert.reset": ", Zurücksetzung in {countdown}",
     "settings.title": "AI Usage Meter – Dienste",
     "settings.heading": "Anzuzeigende Dienste auswählen",
-    "settings.subtitle": "Cloud: beim Öffnen",
+    "settings.subtitle": "Cloud: beim Öffnen und bei Nutzung",
     "settings.col.service": "Dienst",
     "settings.col.description": "Beschreibung",
     "settings.hook.not_installed": (
