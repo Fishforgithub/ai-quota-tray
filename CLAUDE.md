@@ -126,6 +126,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1  # 打包 → dist\
 - **同日（10-04）Antigravity**：業主問為何常逾時、官方有沒有次數限制 → 背景代理查 log（結論見 §3 Antigravity：卡在 agy 啟動時的後端請求、沒有官方限制）。業主選「照 Claude 的做法」＋把 CLI 的修法一起做：狀態列擷取 `agy_hook.py`、設定視窗 Antigravity 列的安裝／移除按鈕（`settings.HOOKS`，按鈕 objectName `agyHookButton`）、CLI 逾時重試等。`tests/test_agy.py` 21 條（含照 agy 的方式經 cmd.exe 真的跑 PowerShell hook，路徑有空白與 `&` 也跑）；unittest 273 過。
 - 業主 2026-10-04 實測：設定按「安裝擷取」→ 重開 agy → `usage-cache.json` 隨 agy 狀態即時更新（只有 `fetchedAt`、`quota`）、tray 背景讀快取不啟動 agy、hook 的 PowerShell 幾秒內都結束。
 - **發版準備（2026-10-04，業主：「開始處理 MSIX 包版、隱私權更新」）**：版號 0.1.5；商店文案 `docs/store-listing-0.1.5.md`（五語新增功能、說明加一段＋換一句、功能第 13 條）；`store-listing.md` §5 runFullTrust（第 2、4 條加 agy）、§6 認證注意事項（加釘選）、§8；`store_shots.py` 五語各 4 張（第 4 張＝釘選，工作列是畫的示意）。隱私權政策（fish-zero-web）補 Antigravity 擷取與釘選——⚠️ 送審前要先上線。
+- ✅ commit `8f8f632`（功能）、`9e99362`（版號＋文案＋截圖），**未 push**。`pack_msix.py` 產出 `build\msix\AiUsageMeter-0.1.5.0-x64.msix`（48.7 MB，Identity `Fish-Zero.AIUsageMeter`）；打包版 exe 版本資訊 0.1.5.0、`probe` 抓得到 Antigravity／Claude、PYZ 裡有 `strip`／`agy_hook`。⚠️ **沒跑 WACK**（最後一次 PASS 是 0.1.3.0；要先移除業主帳號的 Store 版）、**沒做 loose registration 實測**。隱私權政策與產品頁 fish-zero-web `efbb948`（site verify 277 過），**未 push＝還沒上線**。
 - 順帶發現（沒處理）：Claude 擷取串接業主原本的 Node 狀態列（`statusline-usage.js`）時會留下沒結束的行程（2026-10-04 看到 1 個 PowerShell 從前一天 12:18 掛著、7 個 node 從前一天 11:42 起累積，CPU 0）。
 
 **下次開工：MSIX 上線版**（業主 2026-09-25 收工時說下次再處理；細節見 §5）
